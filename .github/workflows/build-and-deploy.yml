@@ -17,15 +17,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Step 1: Request activation file (only needed once to get .ulf)
-  activate:
-    name: Get Unity License
-    runs-on: ubuntu-latest
-    # Only run if we don't have UNITY_LICENSE yet
-    if: ${{ secrets.UNITY_LICENSE != '' }}
-    steps:
-      - run: echo "License secret exists, skipping activation."
-
   build:
     name: Build WebGL
     runs-on: ubuntu-latest
@@ -46,10 +37,11 @@ jobs:
             Library-
 
       # Build WebGL using GameCI
+      # For Personal license: set UNITY_EMAIL + UNITY_PASSWORD
+      # GameCI v4 handles Personal license activation automatically
       - name: Build WebGL
         uses: game-ci/unity-builder@v4
         env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
