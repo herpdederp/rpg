@@ -17,6 +17,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Step 1: Request activation file (only needed once to get .ulf)
+  activate:
+    name: Get Unity License
+    runs-on: ubuntu-latest
+    # Only run if we don't have UNITY_LICENSE yet
+    if: ${{ secrets.UNITY_LICENSE != '' }}
+    steps:
+      - run: echo "License secret exists, skipping activation."
+
   build:
     name: Build WebGL
     runs-on: ubuntu-latest
