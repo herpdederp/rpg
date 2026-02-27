@@ -517,15 +517,9 @@ namespace FantasyGame.Interaction
         // =================================================================
         private Vector3 SnapToTerrain(Vector3 pos)
         {
-            Vector3 rayOrigin = new Vector3(pos.x, 200f, pos.z);
-            if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, 400f))
-            {
-                return hit.point + Vector3.up * 0.02f;
-            }
-
-            // Fallback: use NoiseUtils directly when MeshCollider isn't baked yet
+            // Use NoiseUtils directly — raycasts are unreliable during init
+            // because MeshColliders may not be fully baked yet
             float height = NoiseUtils.SampleHeight(pos.x, pos.z, _terrainSeed);
-            Debug.Log($"[WorldObjectSpawner] Raycast miss at ({pos.x},{pos.z}), using NoiseUtils height={height:F1}");
             return new Vector3(pos.x, height + 0.02f, pos.z);
         }
     }
