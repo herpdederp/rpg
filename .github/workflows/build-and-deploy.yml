@@ -36,39 +36,37 @@ jobs:
             Library-WebGL-
             Library-
 
-      # Use unity-license-activate to generate a proper .ulf for the CI machine
+      # Generate .alf, convert to .ulf via unity-license-activate, then build
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Generate Unity License
+      - name: Generate Unity License and Build
         env:
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         run: |
           npm install -g unity-license-activate
 
-          # Generate the .alf activation request file
+          # Generate .alf from Docker, mounting current dir to get the file out
           docker run --rm \
-            -v "$(pwd)":/project \
+            -v "$(pwd)":/output \
+            -w /output \
             unityci/editor:ubuntu-6000.3.10f1-webgl-3 \
-            unity-editor -batchmode -nographics -createManualActivationFile -logFile /dev/stdout -quit || true
+            bash -c "unity-editor -batchmode -nographics -createManualActivationFile -logFile /dev/stdout -quit; cp /*.alf /output/ 2>/dev/null; find / -maxdepth 1 -name '*.alf' -exec cp {} /output/ \; 2>/dev/null" || true
+
+          echo "Looking for .alf file..."
+          ls -la *.alf 2>/dev/null || echo "No .alf in current dir"
 
           ALF_FILE=$(find . -name "*.alf" -maxdepth 1 | head -1)
           if [ -z "$ALF_FILE" ]; then
-            echo "No .alf file found, checking other locations..."
-            ALF_FILE=$(find /tmp -name "*.alf" 2>/dev/null | head -1)
-          fi
-
-          if [ -z "$ALF_FILE" ]; then
-            echo "ERROR: Could not generate .alf file"
+            echo "ERROR: Could not get .alf file"
             exit 1
           fi
-
           echo "Found ALF: $ALF_FILE"
 
-          # Use unity-license-activate to convert .alf to .ulf via Unity's website
+          # Convert .alf to .ulf using unity-license-activate (headless browser)
           unity-license-activate "$UNITY_EMAIL" "$UNITY_PASSWORD" "$ALF_FILE" || true
 
           ULF_FILE=$(find . -name "*.ulf" -maxdepth 1 | head -1)
@@ -78,21 +76,29 @@ jobs:
           fi
 
           echo "Generated ULF: $ULF_FILE"
-          echo "UNITY_LICENSE_CONTENT<<EOF" >> $GITHUB_ENV
-          cat "$ULF_FILE" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
 
-      # Build using GameCI with the freshly generated license
-      - name: Build WebGL
-        uses: game-ci/unity-builder@v4
-        env:
-          UNITY_LICENSE: ${{ env.UNITY_LICENSE_CONTENT }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-        with:
-          targetPlatform: WebGL
-          unityVersion: 6000.3.10f1
-          buildMethod: BuildScript.BuildWebGL
+          # Store license content for the build step
+          UNITY_LICENSE_CONTENT=$(cat "$ULF_FILE")
+
+          # Now run the actual build with GameCI
+          echo "Starting WebGL build..."
+          docker run --rm \
+            -v "$(pwd)":/github/workspace \
+            -w /github/workspace \
+            -e UNITY_LICENSE_CONTENT="$UNITY_LICENSE_CONTENT" \
+            unityci/editor:ubuntu-6000.3.10f1-webgl-3 \
+            bash -c '
+              mkdir -p /root/.local/share/unity3d/Unity
+              echo "$UNITY_LICENSE_CONTENT" > /root/.local/share/unity3d/Unity/Unity_lic.ulf
+              unity-editor \
+                -batchmode \
+                -nographics \
+                -quit \
+                -logFile /dev/stdout \
+                -projectPath /github/workspace \
+                -executeMethod BuildScript.BuildWebGL \
+                -buildTarget WebGL
+            '
 
       # Upload build artifact
       - name: Upload build artifact
