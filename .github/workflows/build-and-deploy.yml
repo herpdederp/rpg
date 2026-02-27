@@ -38,13 +38,14 @@ jobs:
             Library-WebGL-
             Library-
 
-      # Activate Unity license using Unity's own CLI
-      - name: Activate Unity License
+      # Activate + Build in one step so the login token persists
+      - name: Activate License and Build WebGL
         env:
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         run: |
-          echo "Activating Unity Personal license..."
+          # Step 1: Login and activate in one Unity session
+          echo "=== Activating Unity license ==="
           unity-editor \
             -batchmode \
             -nographics \
@@ -52,13 +53,11 @@ jobs:
             -logFile /dev/stdout \
             -username "$UNITY_EMAIL" \
             -password "$UNITY_PASSWORD" \
-          || echo "Activation returned non-zero (may still be OK for Personal)"
-          echo "License activation step complete."
+            -projectPath . \
+          || true
 
-      # Build WebGL
-      - name: Build WebGL
-        run: |
-          echo "Starting WebGL build..."
+          # Step 2: Build (license should now be cached by LicensingClient)
+          echo "=== Building WebGL ==="
           unity-editor \
             -batchmode \
             -nographics \
@@ -67,7 +66,6 @@ jobs:
             -projectPath . \
             -executeMethod BuildScript.BuildWebGL \
             -buildTarget WebGL
-          echo "Build complete."
 
       # Upload build artifact
       - name: Upload build artifact
