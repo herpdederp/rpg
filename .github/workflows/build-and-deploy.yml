@@ -20,6 +20,8 @@ jobs:
   build:
     name: Build WebGL
     runs-on: ubuntu-latest
+    container:
+      image: unityci/editor:ubuntu-6000.3.10f1-webgl-3
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -36,19 +38,36 @@ jobs:
             Library-WebGL-
             Library-
 
-      # Build WebGL using GameCI
-      # For Personal license: set UNITY_EMAIL + UNITY_PASSWORD
-      # GameCI v4 handles Personal license activation automatically
-      - name: Build WebGL
-        uses: game-ci/unity-builder@v4
+      # Activate Unity license using Unity's own CLI
+      - name: Activate Unity License
         env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-        with:
-          targetPlatform: WebGL
-          unityVersion: 6000.3.10f1
-          buildMethod: BuildScript.BuildWebGL
+        run: |
+          echo "Activating Unity Personal license..."
+          unity-editor \
+            -batchmode \
+            -nographics \
+            -quit \
+            -logFile /dev/stdout \
+            -username "$UNITY_EMAIL" \
+            -password "$UNITY_PASSWORD" \
+          || echo "Activation returned non-zero (may still be OK for Personal)"
+          echo "License activation step complete."
+
+      # Build WebGL
+      - name: Build WebGL
+        run: |
+          echo "Starting WebGL build..."
+          unity-editor \
+            -batchmode \
+            -nographics \
+            -quit \
+            -logFile /dev/stdout \
+            -projectPath . \
+            -executeMethod BuildScript.BuildWebGL \
+            -buildTarget WebGL
+          echo "Build complete."
 
       # Upload build artifact
       - name: Upload build artifact
