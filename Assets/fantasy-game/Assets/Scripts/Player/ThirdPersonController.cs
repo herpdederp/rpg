@@ -33,6 +33,8 @@ namespace FantasyGame.Player
         private Vector3 _velocity;
         private bool _isGrounded;
         private float _characterHeight;
+        private float _fallTimer;
+        private int _graceFrames = 10; // force grounded for first N frames
 
         /// <summary>
         /// Called by GltfBootstrap after the CharacterController is configured.
@@ -41,6 +43,18 @@ namespace FantasyGame.Player
         {
             _cc = cc;
             _characterHeight = height;
+        }
+
+        /// <summary>
+        /// Reset grounding state after respawn/teleport.
+        /// </summary>
+        public void ResetAfterRespawn()
+        {
+            _graceFrames = 10;
+            _velocity = Vector3.zero;
+            _fallTimer = 0f;
+            _isGrounded = true;
+            IsJumping = false;
         }
 
         private void Start()
@@ -55,60 +69,89 @@ namespace FantasyGame.Player
 
         private void Update()
         {
+            if (_cc == null) return;
+
             CacheCamera();
-            HandleMovement();
-            HandleJump();
-            ApplyGravity();
-        }
 
-        private void CacheCamera()
-        {
-            if (_cameraTransform == null && UnityEngine.Camera.main != null)
-                _cameraTransform = UnityEngine.Camera.main.transform;
-        }
+            // --- Ground check (CC check + raycast fallback for uneven terrain) ---
+            // Grace period: force grounded for first frames to let CC settle onto terrain
+            if (_graceFrames > 0)
+            {
+                _graceFrames--;
+                _isGrounded = true;
+                _velocity.y = -2f;
+            }
+            else
+            {
+                _isGrounded = _cc.isGrounded || CheckGroundRaycast();
+            }
 
-        private void HandleMovement()
-        {
-            _isGrounded = _cc.isGrounded;
+            // Reset vertical velocity when grounded
+            if (_isGrounded)
+            {
+                if (_velocity.y < 0f)
+                    _velocity.y = -2f;
+                IsJumping = false;
+                _fallTimer = 0f;
+            }
+            else
+            {
+                _fallTimer += Time.deltaTime;
+                // Safety: if falling for too long, teleport back to terrain surface
+                if (_fallTimer > 3f)
+                {
+                    TeleportToGround();
+                    return;
+                }
+            }
+
+            // --- Horizontal input ---
+            Vector3 moveDir = Vector3.zero;
+            float speed = 0f;
 
             var keyboard = Keyboard.current;
-            if (keyboard == null)
+            if (keyboard != null)
             {
-                CurrentSpeed = 0f;
-                return;
+                float h = 0f;
+                float v = 0f;
+                if (keyboard.dKey.isPressed) h += 1f;
+                if (keyboard.aKey.isPressed) h -= 1f;
+                if (keyboard.wKey.isPressed) v += 1f;
+                if (keyboard.sKey.isPressed) v -= 1f;
+
+                if (!Mathf.Approximately(h, 0f) || !Mathf.Approximately(v, 0f))
+                {
+                    Vector3 forward = _cameraTransform != null
+                        ? Vector3.ProjectOnPlane(_cameraTransform.forward, Vector3.up).normalized
+                        : transform.forward;
+                    Vector3 right = _cameraTransform != null
+                        ? Vector3.ProjectOnPlane(_cameraTransform.right, Vector3.up).normalized
+                        : transform.right;
+
+                    moveDir = (forward * v + right * h).normalized;
+                    speed = keyboard.leftShiftKey.isPressed ? runSpeed : walkSpeed;
+                }
+
+                // --- Jump ---
+                if (_isGrounded && keyboard.spaceKey.wasPressedThisFrame)
+                {
+                    _velocity.y = Mathf.Sqrt(2f * Mathf.Abs(gravity) * jumpHeight);
+                    IsJumping = true;
+                }
             }
-
-            // Raw input from WASD
-            float h = 0f;
-            float v = 0f;
-            if (keyboard.dKey.isPressed) h += 1f;
-            if (keyboard.aKey.isPressed) h -= 1f;
-            if (keyboard.wKey.isPressed) v += 1f;
-            if (keyboard.sKey.isPressed) v -= 1f;
-
-            if (Mathf.Approximately(h, 0f) && Mathf.Approximately(v, 0f))
-            {
-                CurrentSpeed = 0f;
-                return;
-            }
-
-            // Camera-relative direction
-            Vector3 forward = _cameraTransform != null
-                ? Vector3.ProjectOnPlane(_cameraTransform.forward, Vector3.up).normalized
-                : transform.forward;
-            Vector3 right = _cameraTransform != null
-                ? Vector3.ProjectOnPlane(_cameraTransform.right, Vector3.up).normalized
-                : transform.right;
-
-            Vector3 moveDir = (forward * v + right * h).normalized;
-
-            // Speed (hold Shift to run)
-            float speed = keyboard.leftShiftKey.isPressed ? runSpeed : walkSpeed;
 
             CurrentSpeed = speed;
-            _cc.Move(moveDir * speed * Time.deltaTime);
 
-            // Rotate character to face movement direction
+            // --- Apply gravity (clamped so we never fall too fast) ---
+            _velocity.y += gravity * Time.deltaTime;
+            _velocity.y = Mathf.Max(_velocity.y, -20f); // terminal velocity clamp
+
+            // --- Single Move call combining horizontal + vertical ---
+            Vector3 horizontalMove = moveDir * speed * Time.deltaTime;
+            Vector3 verticalMove = new Vector3(0f, _velocity.y * Time.deltaTime, 0f);
+            _cc.Move(horizontalMove + verticalMove);
+
+            // --- Rotate character to face movement direction ---
             if (moveDir.sqrMagnitude > 0.01f)
             {
                 Quaternion targetRot = Quaternion.LookRotation(moveDir, Vector3.up);
@@ -120,27 +163,50 @@ namespace FantasyGame.Player
             }
         }
 
-        private void HandleJump()
+        /// <summary>
+        /// Raycast fallback for ground detection on uneven procedural terrain.
+        /// Uses a simple raycast from slightly above feet straight down.
+        /// </summary>
+        private bool CheckGroundRaycast()
         {
-            var keyboard = Keyboard.current;
-            if (_isGrounded && keyboard != null && keyboard.spaceKey.wasPressedThisFrame)
-            {
-                // v = sqrt(2 * |gravity| * height)
-                _velocity.y = Mathf.Sqrt(2f * Mathf.Abs(gravity) * jumpHeight);
-                IsJumping = true;
-            }
+            // CC center is at (0, height/2, 0), so the bottom of the capsule
+            // is at transform.position.y + center.y - height/2.
+            // For a correctly configured CC this is approximately transform.position.y.
+            float castOriginY = 0.5f; // start ray from knee height
+            float castDist = castOriginY + 0.3f; // check 0.3m below feet
+            Vector3 origin = transform.position + Vector3.up * castOriginY;
+            return Physics.Raycast(origin, Vector3.down, castDist);
         }
 
-        private void ApplyGravity()
+        /// <summary>
+        /// Emergency teleport: if character falls through the world, snap back to terrain.
+        /// </summary>
+        private void TeleportToGround()
         {
-            if (_isGrounded && _velocity.y < 0f)
+            Vector3 pos = transform.position;
+            Vector3 rayOrigin = new Vector3(pos.x, 200f, pos.z);
+            _cc.enabled = false;
+            if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, 400f))
             {
-                IsJumping = false;
-                _velocity.y = -2f; // small downward to stay grounded
+                transform.position = hit.point + Vector3.up * 0.5f;
             }
+            else
+            {
+                // No terrain found at all - reset to origin
+                transform.position = new Vector3(0f, 50f, 0f);
+            }
+            _velocity = Vector3.zero;
+            IsJumping = false;
+            _isGrounded = true;
+            _fallTimer = 0f;
+            _cc.enabled = true;
+            Debug.LogWarning("[ThirdPersonController] Fell through world — teleported back to ground.");
+        }
 
-            _velocity.y += gravity * Time.deltaTime;
-            _cc.Move(_velocity * Time.deltaTime);
+        private void CacheCamera()
+        {
+            if (_cameraTransform == null && UnityEngine.Camera.main != null)
+                _cameraTransform = UnityEngine.Camera.main.transform;
         }
     }
 }

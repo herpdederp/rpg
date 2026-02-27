@@ -501,6 +501,68 @@ def create_jump(arm_obj):
 
 
 # ---------------------------------------------------------------------------
+# Animation: Attack (20 frames = 0.667s, non-looping)
+# ---------------------------------------------------------------------------
+def create_attack(arm_obj):
+    """Right-hand sword slash: wind-up → swing → follow-through."""
+    action = create_action(arm_obj, "Attack")
+    reset_pose(arm_obj)
+
+    # Frame 1: Ready stance (sword raised behind right shoulder)
+    set_bone_rotation(arm_obj, "Spine", 5, -15, 0, 1)
+    set_bone_rotation(arm_obj, "Chest", 0, -10, 0, 1)
+    set_bone_rotation(arm_obj, "UpperArm_R", -60, -30, 0, 1)
+    set_bone_rotation(arm_obj, "LowerArm_R", -80, 0, 0, 1)
+    set_bone_rotation(arm_obj, "Hand_R", 0, 0, 0, 1)
+    set_bone_rotation(arm_obj, "UpperArm_L", 15, 0, 10, 1)
+    set_bone_rotation(arm_obj, "LowerArm_L", -15, 0, 0, 1)
+    set_bone_rotation(arm_obj, "UpperLeg_L", -5, 0, 0, 1)
+    set_bone_rotation(arm_obj, "UpperLeg_R", -5, 0, 0, 1)
+    set_bone_location(arm_obj, "Hips", 0, 0, 0, 1)
+
+    # Frame 5: Wind-up peak (torso twisted back)
+    set_bone_rotation(arm_obj, "Spine", 5, -25, 0, 5)
+    set_bone_rotation(arm_obj, "Chest", 0, -15, 0, 5)
+    set_bone_rotation(arm_obj, "UpperArm_R", -70, -40, 0, 5)
+    set_bone_rotation(arm_obj, "LowerArm_R", -90, 0, 0, 5)
+    set_bone_rotation(arm_obj, "UpperArm_L", 20, 0, 15, 5)
+    set_bone_rotation(arm_obj, "LowerArm_L", -20, 0, 0, 5)
+
+    # Frame 10: Swing impact (fast forward slash)
+    set_bone_rotation(arm_obj, "Spine", -5, 20, 0, 10)
+    set_bone_rotation(arm_obj, "Chest", -5, 15, 0, 10)
+    set_bone_rotation(arm_obj, "UpperArm_R", -20, 50, 0, 10)
+    set_bone_rotation(arm_obj, "LowerArm_R", -30, 0, 0, 10)
+    set_bone_rotation(arm_obj, "Hand_R", 10, 0, 0, 10)
+    set_bone_rotation(arm_obj, "UpperArm_L", 5, 0, -5, 10)
+    set_bone_rotation(arm_obj, "LowerArm_L", -10, 0, 0, 10)
+    set_bone_location(arm_obj, "Hips", 0, 0.02, 0, 10)
+
+    # Frame 14: Follow-through (sword continues past)
+    set_bone_rotation(arm_obj, "Spine", -3, 30, 0, 14)
+    set_bone_rotation(arm_obj, "Chest", -3, 20, 0, 14)
+    set_bone_rotation(arm_obj, "UpperArm_R", 10, 60, 0, 14)
+    set_bone_rotation(arm_obj, "LowerArm_R", -15, 0, 0, 14)
+    set_bone_rotation(arm_obj, "Hand_R", 15, 0, 0, 14)
+    set_bone_rotation(arm_obj, "UpperArm_L", -5, 0, -10, 14)
+
+    # Frame 20: Recovery (back to neutral)
+    set_bone_rotation(arm_obj, "Spine", 0, 0, 0, 20)
+    set_bone_rotation(arm_obj, "Chest", 0, 0, 0, 20)
+    set_bone_rotation(arm_obj, "UpperArm_R", 0, 0, 0, 20)
+    set_bone_rotation(arm_obj, "LowerArm_R", 0, 0, 0, 20)
+    set_bone_rotation(arm_obj, "Hand_R", 0, 0, 0, 20)
+    set_bone_rotation(arm_obj, "UpperArm_L", 0, 0, 0, 20)
+    set_bone_rotation(arm_obj, "LowerArm_L", 0, 0, 0, 20)
+    set_bone_rotation(arm_obj, "UpperLeg_L", 0, 0, 0, 20)
+    set_bone_rotation(arm_obj, "UpperLeg_R", 0, 0, 0, 20)
+    set_bone_location(arm_obj, "Hips", 0, 0, 0, 20)
+
+    push_to_nla(arm_obj, action, "Attack")
+    print("  Created: Attack (20 frames)")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def main():
@@ -518,11 +580,12 @@ def main():
     bpy.context.view_layer.objects.active = arm_obj
     arm_obj.select_set(True)
 
-    # Create all four animations
+    # Create all five animations
     create_idle(arm_obj)
     create_walk(arm_obj)
     create_run(arm_obj)
     create_jump(arm_obj)
+    create_attack(arm_obj)
 
     # Report NLA tracks
     print(f"  NLA tracks: {[t.name for t in arm_obj.animation_data.nla_tracks]}")

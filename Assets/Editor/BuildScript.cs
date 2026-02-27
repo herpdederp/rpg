@@ -30,8 +30,9 @@ public class BuildScript
             return;
         }
 
-        // Force-include GLTFast shaders by adding them to preloaded assets
+        // Force-include shaders that would otherwise be stripped
         EnsureGltfastShadersPreloaded();
+        EnsureCustomShadersPreloaded();
 
         // WebGL player settings
         PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Gzip;
@@ -97,6 +98,36 @@ public class BuildScript
             {
                 preloaded.Add(asset);
                 Debug.Log($"[BuildScript] Added preloaded shader: {path}");
+            }
+        }
+
+        PlayerSettings.SetPreloadedAssets(preloaded.ToArray());
+    }
+
+    private static void EnsureCustomShadersPreloaded()
+    {
+        // Custom shaders that are only referenced at runtime (not by scene assets)
+        string[] shaderPaths = {
+            "Assets/fantasy-game/Assets/Shaders/PainterlyLit.shader",
+            "Assets/fantasy-game/Assets/Shaders/PainterlyGrass.shader",
+            "Assets/fantasy-game/Assets/Shaders/PainterlySky.shader",
+        };
+
+        var preloaded = new List<Object>(PlayerSettings.GetPreloadedAssets());
+
+        foreach (var path in shaderPaths)
+        {
+            var shader = AssetDatabase.LoadAssetAtPath<Shader>(path);
+            if (shader == null)
+            {
+                Debug.LogWarning($"[BuildScript] Custom shader not found at: {path}");
+                continue;
+            }
+
+            if (!preloaded.Contains(shader))
+            {
+                preloaded.Add(shader);
+                Debug.Log($"[BuildScript] Added custom shader: {path}");
             }
         }
 
