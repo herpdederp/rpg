@@ -25,9 +25,9 @@ namespace FantasyGame.Interaction
 
         private void SpawnFixedObjects()
         {
-            // --- NPC near spawn ---
+            // --- NPC outside village (south road) ---
             SpawnNPC(
-                new Vector3(5f, 0, 5f),
+                new Vector3(80f, 0, 30f),
                 "Elder Oakbeard",
                 new DialogueLine[]
                 {
@@ -43,9 +43,9 @@ namespace FantasyGame.Interaction
                 "kill_slimes"
             );
 
-            // --- Second NPC ---
+            // --- Second NPC (west trail) ---
             SpawnNPC(
-                new Vector3(-8f, 0, 12f),
+                new Vector3(30f, 0, 80f),
                 "Scout Fern",
                 new DialogueLine[]
                 {
@@ -60,25 +60,25 @@ namespace FantasyGame.Interaction
                 "collect_pelts"
             );
 
-            // --- Campfire at spawn ---
-            SpawnCampfire(new Vector3(2f, 0, -3f));
+            // --- Campfire south of village ---
+            SpawnCampfire(new Vector3(75f, 0, 35f));
 
-            // --- Campfire further out ---
-            SpawnCampfire(new Vector3(35f, 0, 25f));
+            // --- Campfire east of village ---
+            SpawnCampfire(new Vector3(130f, 0, 85f));
 
-            // --- Treasure chests scattered ---
-            SpawnChest(new Vector3(15f, 0, 10f));
-            SpawnChest(new Vector3(-20f, 0, 30f));
-            SpawnChest(new Vector3(40f, 0, -15f));
+            // --- Treasure chests scattered around the region ---
+            SpawnChest(new Vector3(50f, 0, 60f));
+            SpawnChest(new Vector3(120f, 0, 40f));
+            SpawnChest(new Vector3(40f, 0, 120f));
 
-            // --- Breakable crates near spawn ---
-            SpawnBreakable(new Vector3(8f, 0, -2f), "Crate", "potion_small", 0.5f);
-            SpawnBreakable(new Vector3(9f, 0, -1f), "Crate", "potion_small", 0.3f);
-            SpawnBreakable(new Vector3(7f, 0, -3f), "Barrel", "potion_small", 0.4f);
+            // --- Breakable crates along south road ---
+            SpawnBreakable(new Vector3(82f, 0, 38f), "Crate", "potion_small", 0.5f);
+            SpawnBreakable(new Vector3(83f, 0, 39f), "Crate", "potion_small", 0.3f);
+            SpawnBreakable(new Vector3(81f, 0, 37f), "Barrel", "potion_small", 0.4f);
 
             // --- More breakables further out ---
-            SpawnBreakable(new Vector3(25f, 0, 20f), "Crate", "potion_large", 0.3f);
-            SpawnBreakable(new Vector3(-15f, 0, 25f), "Barrel", "bone_fragment", 0.4f);
+            SpawnBreakable(new Vector3(110f, 0, 70f), "Crate", "potion_large", 0.3f);
+            SpawnBreakable(new Vector3(45f, 0, 100f), "Barrel", "bone_fragment", 0.4f);
 
             // ============================================
             // VILLAGE PLATEAU (flat area at 80, 80)
