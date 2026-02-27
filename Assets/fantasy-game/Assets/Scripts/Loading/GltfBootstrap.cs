@@ -33,6 +33,9 @@ namespace FantasyGame.Loading
         private const string SLIME_FILENAME = "slime.glb";
         private const string SKELETON_FILENAME = "skeleton.glb";
         private const string WOLF_FILENAME = "wolf.glb";
+        private const string NPCS_FILENAME = "npcs.glb";
+        private const string PROPS_FILENAME = "props.glb";
+        private const string ITEMS_FILENAME = "items.glb";
         private const int WORLD_SEED = 12345;
 
         private WorldManager _worldManager;
@@ -40,6 +43,9 @@ namespace FantasyGame.Loading
         private Mesh _slimeMesh;
         private Mesh _skeletonMesh;
         private Mesh _wolfMesh;
+        private Mesh[] _npcMeshes;
+        private Mesh[] _propMeshes;
+        private Mesh[] _itemMeshes;
         private EnemySpawner _enemySpawner;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -92,6 +98,12 @@ namespace FantasyGame.Loading
 
             Debug.Log($"[GltfBootstrap] Loaded {treeMeshes.Length} tree meshes, {rockMeshes.Length} rock meshes, sword={_swordMesh != null}");
             Debug.Log($"[GltfBootstrap] Enemy meshes: slime={_slimeMesh != null}, skeleton={_skeletonMesh != null}, wolf={_wolfMesh != null}");
+
+            // NPC, prop, and item meshes
+            _npcMeshes = await LoadMeshesFromGlb(NPCS_FILENAME);
+            _propMeshes = await LoadMeshesFromGlb(PROPS_FILENAME);
+            _itemMeshes = await LoadMeshesFromGlb(ITEMS_FILENAME);
+            Debug.Log($"[GltfBootstrap] World meshes: npcs={_npcMeshes.Length}, props={_propMeshes.Length}, items={_itemMeshes.Length}");
 
             // --- Register flat zones (must happen before any terrain generation) ---
             NoiseUtils.RegisterFlatZone(80f, 80f, 16f, 12f, 12f); // Village plateau
@@ -501,7 +513,7 @@ namespace FantasyGame.Loading
             // --- World Object Spawner (NPCs, chests, campfires, crates) ---
             var spawnerGo = new GameObject("WorldObjectSpawner");
             var worldSpawner = spawnerGo.AddComponent<WorldObjectSpawner>();
-            worldSpawner.Init(characterRoot.transform, questMgr, WORLD_SEED);
+            worldSpawner.Init(characterRoot.transform, questMgr, WORLD_SEED, _npcMeshes, _propMeshes, _itemMeshes);
 
             Debug.Log("[GltfBootstrap] Phase 4: World Interaction initialized (quests, NPCs, chests, day/night).");
         }
