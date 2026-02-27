@@ -265,7 +265,21 @@ namespace FantasyGame.Loading
             }
             else
             {
+                // Check standard StreamingAssets first
                 string localPath = Path.Combine(basePath, "Models", filename);
+                if (System.IO.File.Exists(localPath))
+                    return new System.Uri(localPath).AbsoluteUri;
+
+                // Fallback: check fantasy-game subdirectory (nested project structure)
+                string altPath = Path.Combine(Application.dataPath, "fantasy-game", "Assets",
+                    "StreamingAssets", "Models", filename);
+                if (System.IO.File.Exists(altPath))
+                {
+                    Debug.Log($"[GltfBootstrap] Using alt path for {filename}: {altPath}");
+                    return new System.Uri(altPath).AbsoluteUri;
+                }
+
+                // Return standard path even if file doesn't exist (will fail gracefully)
                 return new System.Uri(localPath).AbsoluteUri;
             }
         }
