@@ -499,7 +499,7 @@ namespace FantasyGame.Loading
             // --- World Object Spawner (NPCs, chests, campfires, crates) ---
             var spawnerGo = new GameObject("WorldObjectSpawner");
             var worldSpawner = spawnerGo.AddComponent<WorldObjectSpawner>();
-            worldSpawner.Init(characterRoot.transform, questMgr);
+            worldSpawner.Init(characterRoot.transform, questMgr, WORLD_SEED);
 
             Debug.Log("[GltfBootstrap] Phase 4: World Interaction initialized (quests, NPCs, chests, day/night).");
         }

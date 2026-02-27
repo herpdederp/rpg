@@ -21,10 +21,15 @@ namespace FantasyGame.UI
         private const float MAP_RANGE = 50f; // World units visible on minimap
         private const float MARGIN = 10f;
 
+        // Points of interest (always shown on minimap edge if out of range)
+        private static readonly Vector3 VILLAGE_POS = new Vector3(80f, 0f, 80f);
+        private const float VILLAGE_DISCOVERY_RANGE = 20f; // Within this range, stop showing arrow
+
         // Tracking
         private float _refreshTimer;
         private const float REFRESH_INTERVAL = 0.25f;
         private List<MinimapBlip> _blips = new List<MinimapBlip>();
+        private bool _villageDiscovered;
 
         private struct MinimapBlip
         {
@@ -185,6 +190,9 @@ namespace FantasyGame.UI
                 DrawBlip(mapRect, playerPos, blip.WorldPos, blip.Color, blip.Size * scale);
             }
 
+            // Draw village marker (green house icon on minimap edge if far away)
+            DrawVillageMarker(mapRect, playerPos, scale);
+
             // Draw player (white triangle pointing forward)
             DrawPlayerArrow(mapRect, playerAngle, scale);
 
@@ -192,6 +200,12 @@ namespace FantasyGame.UI
             DrawCompassLabels(mapRect, playerAngle, scale);
 
             GUI.color = Color.white;
+
+            // Draw directional hint to village if not discovered yet
+            if (!_villageDiscovered)
+            {
+                DrawVillageHint(playerPos, scale);
+            }
         }
 
         private void DrawBlip(Rect mapRect, Vector3 playerPos, Vector3 worldPos, Color color, float size)
@@ -237,6 +251,109 @@ namespace FantasyGame.UI
             float dotSize = 3f * scale;
             GUI.color = new Color(0.4f, 0.8f, 1f);
             GUI.DrawTexture(new Rect(cx + dirX - dotSize * 0.5f, cy + dirY - dotSize * 0.5f, dotSize, dotSize), _whiteTex);
+        }
+
+        private void DrawVillageMarker(Rect mapRect, Vector3 playerPos, float scale)
+        {
+            float dx = VILLAGE_POS.x - playerPos.x;
+            float dz = VILLAGE_POS.z - playerPos.z;
+            float dist = Mathf.Sqrt(dx * dx + dz * dz);
+
+            // Check discovery
+            if (dist < VILLAGE_DISCOVERY_RANGE)
+            {
+                _villageDiscovered = true;
+            }
+
+            Color villageColor = new Color(0.2f, 0.9f, 0.4f); // Bright green
+            float markerSize = 7f * scale;
+
+            if (dist <= MAP_RANGE)
+            {
+                // Inside minimap range — draw normally
+                float nx = dx / MAP_RANGE * 0.5f + 0.5f;
+                float ny = 0.5f - dz / MAP_RANGE * 0.5f;
+                float cdx2 = nx - 0.5f;
+                float cdy2 = ny - 0.5f;
+                if (cdx2 * cdx2 + cdy2 * cdy2 > 0.23f) return;
+
+                float px = mapRect.x + nx * mapRect.width;
+                float py = mapRect.y + ny * mapRect.height;
+
+                GUI.color = villageColor;
+                GUI.DrawTexture(new Rect(px - markerSize * 0.5f, py - markerSize * 0.5f, markerSize, markerSize), _whiteTex);
+                // Draw a slightly smaller inner dot for visibility
+                GUI.color = Color.white;
+                float innerSize = markerSize * 0.4f;
+                GUI.DrawTexture(new Rect(px - innerSize * 0.5f, py - innerSize * 0.5f, innerSize, innerSize), _whiteTex);
+            }
+            else
+            {
+                // Outside range — clamp to minimap edge as a direction arrow
+                float angle = Mathf.Atan2(dx, dz); // angle from player to village
+                float edgeRadius = 0.44f; // Just inside the circle edge
+                float ex = 0.5f + Mathf.Sin(angle) * edgeRadius;
+                float ey = 0.5f - Mathf.Cos(angle) * edgeRadius;
+
+                float px = mapRect.x + ex * mapRect.width;
+                float py = mapRect.y + ey * mapRect.height;
+
+                // Pulsing alpha for attention
+                float pulse = 0.6f + 0.4f * Mathf.Sin(Time.time * 3f);
+                GUI.color = new Color(villageColor.r, villageColor.g, villageColor.b, pulse);
+                GUI.DrawTexture(new Rect(px - markerSize * 0.5f, py - markerSize * 0.5f, markerSize, markerSize), _whiteTex);
+            }
+        }
+
+        private void DrawVillageHint(Vector3 playerPos, float scale)
+        {
+            float dx = VILLAGE_POS.x - playerPos.x;
+            float dz = VILLAGE_POS.z - playerPos.z;
+            float dist = Mathf.Sqrt(dx * dx + dz * dz);
+
+            if (dist < VILLAGE_DISCOVERY_RANGE) return;
+
+            // Screen-space directional hint at bottom center
+            var hintStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = Mathf.RoundToInt(14 * scale),
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter
+            };
+
+            float pulse = 0.5f + 0.5f * Mathf.Sin(Time.time * 2f);
+            hintStyle.normal.textColor = new Color(0.3f, 0.9f, 0.5f, pulse * 0.8f);
+
+            // Direction as compass text
+            float angle = Mathf.Atan2(dx, dz) * Mathf.Rad2Deg;
+            string direction = GetCompassDirection(angle);
+            int distInt = Mathf.RoundToInt(dist);
+
+            string hint = $"Village Outpost — {distInt}m {direction}";
+            float hintW = 300f * scale;
+            float hintH = 30f * scale;
+            float hintX = (Screen.width - hintW) * 0.5f;
+            float hintY = Screen.height - 60f * scale;
+
+            // Shadow
+            var shadowStyle = new GUIStyle(hintStyle);
+            shadowStyle.normal.textColor = new Color(0, 0, 0, pulse * 0.5f);
+            GUI.Label(new Rect(hintX + 1, hintY + 1, hintW, hintH), hint, shadowStyle);
+            GUI.Label(new Rect(hintX, hintY, hintW, hintH), hint, hintStyle);
+        }
+
+        private string GetCompassDirection(float angle)
+        {
+            // angle is degrees clockwise from +Z (north)
+            if (angle < 0) angle += 360f;
+            if (angle >= 337.5f || angle < 22.5f) return "N";
+            if (angle < 67.5f) return "NE";
+            if (angle < 112.5f) return "E";
+            if (angle < 157.5f) return "SE";
+            if (angle < 202.5f) return "S";
+            if (angle < 247.5f) return "SW";
+            if (angle < 292.5f) return "W";
+            return "NW";
         }
 
         private void DrawCompassLabels(Rect mapRect, float angle, float scale)

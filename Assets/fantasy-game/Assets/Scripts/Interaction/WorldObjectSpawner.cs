@@ -5,6 +5,7 @@
 
 using UnityEngine;
 using FantasyGame.RPG;
+using FantasyGame.Utils;
 
 namespace FantasyGame.Interaction
 {
@@ -12,11 +13,13 @@ namespace FantasyGame.Interaction
     {
         private Transform _player;
         private QuestManager _questManager;
+        private int _terrainSeed;
 
-        public void Init(Transform player, QuestManager questManager)
+        public void Init(Transform player, QuestManager questManager, int seed = 12345)
         {
             _player = player;
             _questManager = questManager;
+            _terrainSeed = seed;
             SpawnFixedObjects();
         }
 
@@ -433,7 +436,11 @@ namespace FantasyGame.Interaction
             {
                 return hit.point + Vector3.up * 0.02f;
             }
-            return pos;
+
+            // Fallback: use NoiseUtils directly when MeshCollider isn't baked yet
+            float height = NoiseUtils.SampleHeight(pos.x, pos.z, _terrainSeed);
+            Debug.Log($"[WorldObjectSpawner] Raycast miss at ({pos.x},{pos.z}), using NoiseUtils height={height:F1}");
+            return new Vector3(pos.x, height + 0.02f, pos.z);
         }
     }
 }
