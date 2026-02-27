@@ -22,11 +22,14 @@ namespace FantasyGame.Interaction
         private Mesh[] _propMeshes;
         // Items: [0]=Potion, [1]=Shield, [2]=Axe, [3]=Helmet, [4]=Bone, [5]=Pelt
         private Mesh[] _itemMeshes;
+        // Buildings: [0]=Cottage, [1]=BlacksmithForge, [2]=MarketStall, [3]=Watchtower
+        private Mesh[] _buildingMeshes;
 
         private Material _vcMaterial; // Shared vertex-color material
 
         public void Init(Transform player, QuestManager questManager, int seed = 12345,
-            Mesh[] npcMeshes = null, Mesh[] propMeshes = null, Mesh[] itemMeshes = null)
+            Mesh[] npcMeshes = null, Mesh[] propMeshes = null, Mesh[] itemMeshes = null,
+            Mesh[] buildingMeshes = null)
         {
             _player = player;
             _questManager = questManager;
@@ -34,6 +37,7 @@ namespace FantasyGame.Interaction
             _npcMeshes = npcMeshes ?? new Mesh[0];
             _propMeshes = propMeshes ?? new Mesh[0];
             _itemMeshes = itemMeshes ?? new Mesh[0];
+            _buildingMeshes = buildingMeshes ?? new Mesh[0];
 
             // Create a shared vertex-color material (PainterlyLit or fallback)
             var shader = Shader.Find("FantasyGame/PainterlyLit")
@@ -43,7 +47,7 @@ namespace FantasyGame.Interaction
             _vcMaterial.SetColor("_BaseColor", Color.white);
             _vcMaterial.enableInstancing = true;
 
-            Debug.Log($"[WorldObjectSpawner] Shader={shader?.name ?? "NULL"}, Meshes: npcs={_npcMeshes.Length}, props={_propMeshes.Length}, items={_itemMeshes.Length}");
+            Debug.Log($"[WorldObjectSpawner] Shader={shader?.name ?? "NULL"}, Meshes: npcs={_npcMeshes.Length}, props={_propMeshes.Length}, items={_itemMeshes.Length}, buildings={_buildingMeshes.Length}");
 
             SpawnFixedObjects();
         }
@@ -109,9 +113,16 @@ namespace FantasyGame.Interaction
             // VILLAGE PLATEAU (flat area at 80, 80)
             // ============================================
 
-            // Village NPC: Blacksmith
+            // --- Village buildings ---
+            SpawnBuilding(new Vector3(76f, 0, 86f), 0, 0f);      // Cottage (north-west)
+            SpawnBuilding(new Vector3(86f, 0, 82f), 1, -90f);    // Forge (east, facing center)
+            SpawnBuilding(new Vector3(82f, 0, 74f), 2, 0f);      // Market Stall (south)
+            SpawnBuilding(new Vector3(72f, 0, 80f), 3, 0f);      // Watchtower (west perimeter)
+
+            // --- Village NPCs (near their buildings) ---
+            // Blacksmith near the forge
             SpawnNPC(
-                new Vector3(80f, 0, 80f),
+                new Vector3(84f, 0, 82f),
                 "Blacksmith Grond",
                 new DialogueLine[]
                 {
@@ -128,9 +139,9 @@ namespace FantasyGame.Interaction
                 1 // Blacksmith mesh
             );
 
-            // Village NPC: Merchant (flavor, no quest)
+            // Merchant near the market stall
             SpawnNPC(
-                new Vector3(83f, 0, 84f),
+                new Vector3(80f, 0, 74f),
                 "Merchant Thalia",
                 new DialogueLine[]
                 {
@@ -146,19 +157,19 @@ namespace FantasyGame.Interaction
             );
 
             // Village campfire (central gathering point)
-            SpawnCampfire(new Vector3(78f, 0, 82f));
+            SpawnCampfire(new Vector3(80f, 0, 80f));
 
-            // Village treasure chest
-            SpawnChest(new Vector3(85f, 0, 76f));
+            // Village treasure chest (inside cottage area)
+            SpawnChest(new Vector3(77f, 0, 84f));
 
-            // Village supply crates/barrels
-            SpawnBreakable(new Vector3(75f, 0, 78f), "Crate", "potion_large", 0.5f);
-            SpawnBreakable(new Vector3(76f, 0, 79f), "Barrel", "potion_small", 0.4f);
-            SpawnBreakable(new Vector3(74f, 0, 77f), "Crate", "potion_small", 0.3f);
+            // Village supply crates/barrels (near forge)
+            SpawnBreakable(new Vector3(87f, 0, 84f), "Crate", "potion_large", 0.5f);
+            SpawnBreakable(new Vector3(88f, 0, 83f), "Barrel", "potion_small", 0.4f);
+            SpawnBreakable(new Vector3(87f, 0, 85f), "Crate", "potion_small", 0.3f);
 
-            // Training dummies
-            SpawnTrainingDummy(new Vector3(72f, 0, 83f));
-            SpawnTrainingDummy(new Vector3(73f, 0, 85f));
+            // Training dummies (near watchtower)
+            SpawnTrainingDummy(new Vector3(74f, 0, 78f));
+            SpawnTrainingDummy(new Vector3(74f, 0, 82f));
 
             Debug.Log("[WorldObjectSpawner] Fixed world objects placed (including village plateau).");
         }
@@ -509,6 +520,53 @@ namespace FantasyGame.Interaction
                     mat.color = new Color(0.7f, 0.6f, 0.45f);
                     headRenderer.material = mat;
                 }
+            }
+        }
+
+        // =================================================================
+        // Building
+        // =================================================================
+        private void SpawnBuilding(Vector3 pos, int meshIndex, float yRotation)
+        {
+            pos = SnapToTerrain(pos);
+
+            string[] names = { "Cottage", "BlacksmithForge", "MarketStall", "Watchtower" };
+            string bName = meshIndex < names.Length ? names[meshIndex] : $"Building_{meshIndex}";
+            var buildingGo = new GameObject($"Building_{bName}");
+            buildingGo.transform.position = pos;
+            buildingGo.transform.rotation = Quaternion.Euler(0, yRotation, 0);
+
+            Mesh buildingMesh = GetMesh(_buildingMeshes, meshIndex);
+            if (!AttachMesh(buildingGo, buildingMesh, Vector3.zero, Vector3.one))
+            {
+                // Fallback: simple box placeholder
+                var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+                var box = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                box.transform.SetParent(buildingGo.transform);
+                box.transform.localPosition = new Vector3(0, 1.0f, 0);
+                box.transform.localScale = new Vector3(2f, 2f, 2f);
+                var boxCol = box.GetComponent<Collider>();
+                if (boxCol != null) Object.Destroy(boxCol);
+                var boxRenderer = box.GetComponent<Renderer>();
+                if (boxRenderer != null)
+                {
+                    var mat = new Material(shader);
+                    mat.color = new Color(0.5f, 0.35f, 0.2f);
+                    boxRenderer.material = mat;
+                }
+            }
+
+            // Add a collider so player can't walk through
+            var col = buildingGo.AddComponent<BoxCollider>();
+            if (buildingMesh != null)
+            {
+                col.center = buildingMesh.bounds.center;
+                col.size = buildingMesh.bounds.size;
+            }
+            else
+            {
+                col.center = new Vector3(0, 1f, 0);
+                col.size = new Vector3(2f, 2f, 2f);
             }
         }
 

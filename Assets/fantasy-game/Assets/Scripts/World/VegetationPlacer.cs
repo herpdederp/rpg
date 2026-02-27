@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
+using FantasyGame.Utils;
 
 namespace FantasyGame.World
 {
@@ -64,6 +65,10 @@ namespace FantasyGame.World
                 if (slope < MIN_SLOPE_FOR_TREES || height < MIN_TREE_HEIGHT || height > MAX_TREE_HEIGHT)
                     continue;
 
+                // Skip vegetation inside flat zones (village areas)
+                if (IsInFlatZone(x, z))
+                    continue;
+
                 int meshIdx = rng.Next(0, _treeMeshes.Length);
                 float scale = 0.8f + (float)rng.NextDouble() * 0.5f;
                 float rotY = (float)(rng.NextDouble() * 360.0);
@@ -87,6 +92,10 @@ namespace FantasyGame.World
                     float x = originX + (float)(rng.NextDouble() * chunkSize);
                     float z = originZ + (float)(rng.NextDouble() * chunkSize);
                     float height = _terrain.GetHeight(x, z);
+
+                    // Skip vegetation inside flat zones (village areas)
+                    if (IsInFlatZone(x, z))
+                        continue;
 
                     int meshIdx = rng.Next(0, _rockMeshes.Length);
                     float scale = 0.6f + (float)rng.NextDouble() * 0.8f;
@@ -120,6 +129,23 @@ namespace FantasyGame.World
                 if (go != null) Destroy(go);
             }
             _chunkVegetation.Remove(chunkKey);
+        }
+
+        /// <summary>
+        /// Check if a world position is inside any registered flat zone (with buffer).
+        /// </summary>
+        private bool IsInFlatZone(float worldX, float worldZ)
+        {
+            foreach (var zone in NoiseUtils.Zones)
+            {
+                float dx = worldX - zone.CenterX;
+                float dz = worldZ - zone.CenterZ;
+                float dist = Mathf.Sqrt(dx * dx + dz * dz);
+                // Exclude within zone radius + falloff + small buffer
+                if (dist < zone.Radius + zone.FalloffRadius + 4f)
+                    return true;
+            }
+            return false;
         }
 
         private GameObject CreateVegetationObject(string name, Mesh mesh, Vector3 position, Quaternion rotation, Vector3 scale)

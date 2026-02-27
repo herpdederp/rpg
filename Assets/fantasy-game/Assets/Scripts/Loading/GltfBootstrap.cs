@@ -36,6 +36,7 @@ namespace FantasyGame.Loading
         private const string NPCS_FILENAME = "npcs.glb";
         private const string PROPS_FILENAME = "props.glb";
         private const string ITEMS_FILENAME = "items.glb";
+        private const string BUILDINGS_FILENAME = "buildings.glb";
         private const int WORLD_SEED = 12345;
 
         private WorldManager _worldManager;
@@ -46,6 +47,7 @@ namespace FantasyGame.Loading
         private Mesh[] _npcMeshes;
         private Mesh[] _propMeshes;
         private Mesh[] _itemMeshes;
+        private Mesh[] _buildingMeshes;
         private EnemySpawner _enemySpawner;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -103,7 +105,8 @@ namespace FantasyGame.Loading
             _npcMeshes = await LoadMeshesFromGlb(NPCS_FILENAME);
             _propMeshes = await LoadMeshesFromGlb(PROPS_FILENAME);
             _itemMeshes = await LoadMeshesFromGlb(ITEMS_FILENAME);
-            Debug.Log($"[GltfBootstrap] World meshes: npcs={_npcMeshes.Length}, props={_propMeshes.Length}, items={_itemMeshes.Length}");
+            _buildingMeshes = await LoadMeshesFromGlb(BUILDINGS_FILENAME);
+            Debug.Log($"[GltfBootstrap] World meshes: npcs={_npcMeshes.Length}, props={_propMeshes.Length}, items={_itemMeshes.Length}, buildings={_buildingMeshes.Length}");
 
             // --- Register flat zones (must happen before any terrain generation) ---
             NoiseUtils.RegisterFlatZone(80f, 80f, 16f, 12f, 12f); // Village plateau
@@ -533,7 +536,7 @@ namespace FantasyGame.Loading
             // --- World Object Spawner (NPCs, chests, campfires, crates) ---
             var spawnerGo = new GameObject("WorldObjectSpawner");
             var worldSpawner = spawnerGo.AddComponent<WorldObjectSpawner>();
-            worldSpawner.Init(characterRoot.transform, questMgr, WORLD_SEED, _npcMeshes, _propMeshes, _itemMeshes);
+            worldSpawner.Init(characterRoot.transform, questMgr, WORLD_SEED, _npcMeshes, _propMeshes, _itemMeshes, _buildingMeshes);
 
             Debug.Log("[GltfBootstrap] Phase 4: World Interaction initialized (quests, NPCs, chests, day/night).");
         }
