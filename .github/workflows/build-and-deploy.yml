@@ -38,7 +38,28 @@ jobs:
             Library-WebGL-
             Library-
 
-      # Login + Build in a single Unity invocation so the license token persists
+      # Write the license file where Unity 6 expects it
+      - name: Activate Unity License
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        run: |
+          # Write entitlement license where Unity 6 LicensingClient looks for it
+          UNITY_LICENSE_DIR="/root/.config/unity3d/Unity"
+          mkdir -p "$UNITY_LICENSE_DIR"
+          echo "$UNITY_LICENSE" > "$UNITY_LICENSE_DIR/UnityEntitlementLicense.xml"
+          echo "License file written to $UNITY_LICENSE_DIR/UnityEntitlementLicense.xml"
+
+          # Also write to the legacy location just in case
+          mkdir -p /root/.local/share/unity3d/Unity
+          echo "$UNITY_LICENSE" > /root/.local/share/unity3d/Unity/Unity_lic.ulf
+
+          # And the global location
+          mkdir -p /usr/share/unity3d/config
+          echo "$UNITY_LICENSE" > /usr/share/unity3d/config/Unity_lic.ulf
+
+      # Build WebGL
       - name: Build WebGL
         env:
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
