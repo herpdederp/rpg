@@ -232,6 +232,7 @@ namespace FantasyGame.Loading
             var meshFilters = tempParent.GetComponentsInChildren<MeshFilter>(true);
             var meshes = new List<Mesh>();
 
+            Debug.Log($"[GltfBootstrap] Found {meshFilters.Length} MeshFilters in {filename}");
             foreach (var mf in meshFilters)
             {
                 if (mf.sharedMesh != null && mf.sharedMesh.vertexCount > 0)
@@ -240,6 +241,11 @@ namespace FantasyGame.Loading
                     var clonedMesh = Object.Instantiate(mf.sharedMesh);
                     clonedMesh.name = mf.sharedMesh.name;
                     meshes.Add(clonedMesh);
+                    Debug.Log($"[GltfBootstrap]   mesh '{clonedMesh.name}': {clonedMesh.vertexCount} verts, colors={clonedMesh.colors.Length}, bounds={clonedMesh.bounds}");
+                }
+                else
+                {
+                    Debug.LogWarning($"[GltfBootstrap]   skipped mesh (null or empty) from {mf.gameObject.name}");
                 }
             }
 

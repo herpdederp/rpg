@@ -125,9 +125,19 @@ def smooth_shade(obj):
 
 
 def set_origin_bottom(obj, z_offset=0.0):
-    lowest = min(v.co.z for v in obj.data.vertices)
-    bpy.context.scene.cursor.location = Vector((0, 0, lowest + z_offset))
-    bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+    """Move vertices so the mesh is centered in X/Y with bottom at Z=0.
+    This strips out any offset_x baked into vertex positions."""
+    verts = obj.data.vertices
+    xs = [v.co.x for v in verts]
+    ys = [v.co.y for v in verts]
+    zs = [v.co.z for v in verts]
+    cx = (min(xs) + max(xs)) * 0.5
+    cy = (min(ys) + max(ys)) * 0.5
+    min_z = min(zs) + z_offset
+    for v in verts:
+        v.co.x -= cx
+        v.co.y -= cy
+        v.co.z -= min_z
     obj.location = (0, 0, 0)
 
 

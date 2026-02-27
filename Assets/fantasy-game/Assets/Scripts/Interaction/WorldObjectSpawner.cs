@@ -43,7 +43,7 @@ namespace FantasyGame.Interaction
             _vcMaterial.SetColor("_BaseColor", Color.white);
             _vcMaterial.enableInstancing = true;
 
-            Debug.Log($"[WorldObjectSpawner] Meshes: npcs={_npcMeshes.Length}, props={_propMeshes.Length}, items={_itemMeshes.Length}");
+            Debug.Log($"[WorldObjectSpawner] Shader={shader?.name ?? "NULL"}, Meshes: npcs={_npcMeshes.Length}, props={_propMeshes.Length}, items={_itemMeshes.Length}");
 
             SpawnFixedObjects();
         }
@@ -168,7 +168,11 @@ namespace FantasyGame.Interaction
         // =================================================================
         private bool AttachMesh(GameObject parent, Mesh mesh, Vector3 localPos, Vector3 localScale)
         {
-            if (mesh == null) return false;
+            if (mesh == null)
+            {
+                Debug.LogWarning($"[WorldObjectSpawner] AttachMesh: null mesh for {parent.name}");
+                return false;
+            }
 
             var meshGo = new GameObject("Mesh");
             meshGo.transform.SetParent(parent.transform);
@@ -180,6 +184,7 @@ namespace FantasyGame.Interaction
             var mr = meshGo.AddComponent<MeshRenderer>();
             mr.sharedMaterial = new Material(_vcMaterial);
 
+            Debug.Log($"[WorldObjectSpawner] AttachMesh OK: {parent.name} -> {mesh.name} ({mesh.vertexCount} verts, bounds={mesh.bounds})");
             return true;
         }
 
@@ -260,7 +265,8 @@ namespace FantasyGame.Interaction
             fireGo.transform.position = pos;
 
             Mesh campfireMesh = GetMesh(_propMeshes, 0);
-            if (!AttachMesh(fireGo, campfireMesh, Vector3.zero, Vector3.one))
+            // Campfire model is ~0.11m tall, ~0.83m wide — scale up 3x for game
+            if (!AttachMesh(fireGo, campfireMesh, Vector3.zero, Vector3.one * 3f))
             {
                 // Fallback: primitive logs + stones
                 for (int i = 0; i < 3; i++)
