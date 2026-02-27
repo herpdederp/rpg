@@ -6,6 +6,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using FantasyGame.RPG;
+using FantasyGame.Utils;
 
 namespace FantasyGame.Enemies
 {
@@ -238,12 +239,33 @@ namespace FantasyGame.Enemies
                         // Make sure it's not too steep (slope check)
                         if (hit.normal.y > 0.7f)
                         {
-                            return hit.point + Vector3.up * 0.1f;
+                            // Keep enemies away from flat zones (villages, etc.)
+                            if (!IsNearFlatZone(candidate.x, candidate.z, 16f))
+                            {
+                                return hit.point + Vector3.up * 0.1f;
+                            }
                         }
                     }
                 }
             }
             return null;
+        }
+
+        /// <summary>
+        /// Returns true if the position is within (zone radius + falloff + buffer) of any flat zone.
+        /// </summary>
+        private bool IsNearFlatZone(float worldX, float worldZ, float buffer)
+        {
+            for (int i = 0; i < NoiseUtils.Zones.Count; i++)
+            {
+                var zone = NoiseUtils.Zones[i];
+                float dx = worldX - zone.CenterX;
+                float dz = worldZ - zone.CenterZ;
+                float dist = Mathf.Sqrt(dx * dx + dz * dz);
+                if (dist < zone.Radius + zone.FalloffRadius + buffer)
+                    return true;
+            }
+            return false;
         }
 
         private void SpawnEnemy(EnemyConfig config, Vector3 position)
