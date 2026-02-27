@@ -1,7 +1,21 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 namespace FantasyGame.Utils
 {
+    /// <summary>
+    /// Defines a circular flat zone that overrides terrain height.
+    /// Used for villages, arenas, and other flat clearings.
+    /// </summary>
+    public struct FlatZone
+    {
+        public float CenterX;
+        public float CenterZ;
+        public float Radius;        // Core flat radius (fully flat inside)
+        public float FalloffRadius;  // Smooth transition width outside core
+        public float TargetHeight;   // Height the terrain flattens to
+    }
+
     public static class NoiseUtils
     {
         public const int DEFAULT_OCTAVES = 4;
@@ -9,6 +23,26 @@ namespace FantasyGame.Utils
         public const float DEFAULT_LACUNARITY = 2.0f;
         public const float DEFAULT_PERSISTENCE = 0.5f;
         public const float DEFAULT_AMPLITUDE = 30f;
+
+        /// <summary>
+        /// Registered flat zones. Add zones before terrain generation.
+        /// </summary>
+        public static readonly List<FlatZone> Zones = new List<FlatZone>();
+
+        /// <summary>
+        /// Register a circular flat zone at the given world position.
+        /// </summary>
+        public static void RegisterFlatZone(float centerX, float centerZ, float radius, float falloff, float targetHeight)
+        {
+            Zones.Add(new FlatZone
+            {
+                CenterX = centerX,
+                CenterZ = centerZ,
+                Radius = radius,
+                FalloffRadius = falloff,
+                TargetHeight = targetHeight
+            });
+        }
 
         /// <summary>
         /// Multi-octave Perlin noise. Returns a height value.
@@ -48,6 +82,33 @@ namespace FantasyGame.Utils
             // Shift upward so valleys are shallow and hills are tall
             height = (height / maxPossible) * amplitude;
             height += amplitude * 0.3f; // Raise base level
+
+            // Apply flat zone modifiers (smoothstep blend toward target height)
+            for (int z = 0; z < Zones.Count; z++)
+            {
+                var zone = Zones[z];
+                float dx = worldX - zone.CenterX;
+                float dz = worldZ - zone.CenterZ;
+                float dist = Mathf.Sqrt(dx * dx + dz * dz);
+
+                if (dist < zone.Radius + zone.FalloffRadius)
+                {
+                    float blend;
+                    if (dist <= zone.Radius)
+                    {
+                        blend = 1.0f; // Fully flat inside core
+                    }
+                    else
+                    {
+                        // Smoothstep falloff: zero derivative at both endpoints
+                        float t = (dist - zone.Radius) / zone.FalloffRadius;
+                        t = Mathf.Clamp01(t);
+                        blend = 1.0f - (t * t * (3.0f - 2.0f * t));
+                    }
+
+                    height = Mathf.Lerp(height, zone.TargetHeight, blend);
+                }
+            }
 
             return height;
         }

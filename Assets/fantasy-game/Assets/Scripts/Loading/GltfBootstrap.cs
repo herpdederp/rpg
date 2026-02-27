@@ -20,6 +20,7 @@ using FantasyGame.Enemies;
 using FantasyGame.Interaction;
 using FantasyGame.Audio;
 using FantasyGame.VFX;
+using FantasyGame.Utils;
 
 namespace FantasyGame.Loading
 {
@@ -91,6 +92,9 @@ namespace FantasyGame.Loading
 
             Debug.Log($"[GltfBootstrap] Loaded {treeMeshes.Length} tree meshes, {rockMeshes.Length} rock meshes, sword={_swordMesh != null}");
             Debug.Log($"[GltfBootstrap] Enemy meshes: slime={_slimeMesh != null}, skeleton={_skeletonMesh != null}, wolf={_wolfMesh != null}");
+
+            // --- Register flat zones (must happen before any terrain generation) ---
+            NoiseUtils.RegisterFlatZone(80f, 80f, 16f, 12f, 12f); // Village plateau
 
             // --- Initialize world ---
             var worldGo = new GameObject("WorldManager");

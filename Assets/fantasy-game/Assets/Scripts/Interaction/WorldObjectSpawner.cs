@@ -77,7 +77,60 @@ namespace FantasyGame.Interaction
             SpawnBreakable(new Vector3(25f, 0, 20f), "Crate", "potion_large", 0.3f);
             SpawnBreakable(new Vector3(-15f, 0, 25f), "Barrel", "bone_fragment", 0.4f);
 
-            Debug.Log("[WorldObjectSpawner] Fixed world objects placed.");
+            // ============================================
+            // VILLAGE PLATEAU (flat area at 80, 80)
+            // ============================================
+
+            // Village NPC: Blacksmith
+            SpawnNPC(
+                new Vector3(80f, 0, 80f),
+                "Blacksmith Grond",
+                new DialogueLine[]
+                {
+                    new DialogueLine("Blacksmith Grond", "Welcome to the plateau outpost, traveler."),
+                    new DialogueLine("Blacksmith Grond", "Skeletons have been raiding our supplies from the highlands."),
+                    new DialogueLine("Blacksmith Grond", "Defeat 3 of them and I'll forge you a fine blade."),
+                },
+                new DialogueLine[]
+                {
+                    new DialogueLine("Blacksmith Grond", "Well done! The highlands are quieter now."),
+                    new DialogueLine("Blacksmith Grond", "As promised, here's your iron blade. Swing it well!"),
+                },
+                "kill_skeletons"
+            );
+
+            // Village NPC: Merchant (flavor, no quest)
+            SpawnNPC(
+                new Vector3(83f, 0, 84f),
+                "Merchant Thalia",
+                new DialogueLine[]
+                {
+                    new DialogueLine("Merchant Thalia", "Business has been slow since the wolves moved in nearby."),
+                    new DialogueLine("Merchant Thalia", "If you happen to gather wolf pelts, I know a scout near the spawn who trades for them."),
+                },
+                new DialogueLine[]
+                {
+                    new DialogueLine("Merchant Thalia", "Thank you for making the roads safer."),
+                },
+                "" // No quest — flavor NPC
+            );
+
+            // Village campfire (central gathering point)
+            SpawnCampfire(new Vector3(78f, 0, 82f));
+
+            // Village treasure chest
+            SpawnChest(new Vector3(85f, 0, 76f));
+
+            // Village supply crates/barrels
+            SpawnBreakable(new Vector3(75f, 0, 78f), "Crate", "potion_large", 0.5f);
+            SpawnBreakable(new Vector3(76f, 0, 79f), "Barrel", "potion_small", 0.4f);
+            SpawnBreakable(new Vector3(74f, 0, 77f), "Crate", "potion_small", 0.3f);
+
+            // Training dummies
+            SpawnTrainingDummy(new Vector3(72f, 0, 83f));
+            SpawnTrainingDummy(new Vector3(73f, 0, 85f));
+
+            Debug.Log("[WorldObjectSpawner] Fixed world objects placed (including village plateau).");
         }
 
         private void SpawnNPC(Vector3 pos, string name, DialogueLine[] lines,
@@ -101,9 +154,14 @@ namespace FantasyGame.Interaction
             {
                 var mat = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
                 // Different colors per NPC
-                mat.color = name.Contains("Elder")
-                    ? new Color(0.3f, 0.5f, 0.25f)  // Green robe
-                    : new Color(0.5f, 0.35f, 0.25f); // Brown leather
+                if (name.Contains("Elder"))
+                    mat.color = new Color(0.3f, 0.5f, 0.25f);       // Green robe
+                else if (name.Contains("Blacksmith"))
+                    mat.color = new Color(0.25f, 0.25f, 0.3f);      // Dark grey apron
+                else if (name.Contains("Merchant"))
+                    mat.color = new Color(0.6f, 0.3f, 0.5f);        // Purple merchant garb
+                else
+                    mat.color = new Color(0.5f, 0.35f, 0.25f);      // Brown leather
                 bodyRenderer.material = mat;
             }
 
@@ -310,6 +368,62 @@ namespace FantasyGame.Interaction
             var breakable = breakGo.AddComponent<BreakableObject>();
             breakable.ObjectName = type;
             breakable.Init(10, lootId, lootChance);
+        }
+
+        private void SpawnTrainingDummy(Vector3 pos)
+        {
+            pos = SnapToTerrain(pos);
+
+            var dummyGo = new GameObject("TrainingDummy");
+            dummyGo.transform.position = pos;
+
+            var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+
+            // Vertical pole
+            var pole = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            pole.transform.SetParent(dummyGo.transform);
+            pole.transform.localPosition = new Vector3(0, 0.75f, 0);
+            pole.transform.localScale = new Vector3(0.1f, 0.75f, 0.1f);
+            var poleCol = pole.GetComponent<Collider>();
+            if (poleCol != null) Object.Destroy(poleCol);
+            var poleRenderer = pole.GetComponent<Renderer>();
+            if (poleRenderer != null)
+            {
+                var mat = new Material(shader);
+                mat.color = new Color(0.45f, 0.30f, 0.15f); // Wood brown
+                poleRenderer.material = mat;
+            }
+
+            // Crossbar (horizontal)
+            var crossbar = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            crossbar.transform.SetParent(dummyGo.transform);
+            crossbar.transform.localPosition = new Vector3(0, 1.2f, 0);
+            crossbar.transform.localScale = new Vector3(0.08f, 0.35f, 0.08f);
+            crossbar.transform.localRotation = Quaternion.Euler(0, 0, 90f);
+            var crossCol = crossbar.GetComponent<Collider>();
+            if (crossCol != null) Object.Destroy(crossCol);
+            var crossRenderer = crossbar.GetComponent<Renderer>();
+            if (crossRenderer != null)
+            {
+                var mat = new Material(shader);
+                mat.color = new Color(0.45f, 0.30f, 0.15f);
+                crossRenderer.material = mat;
+            }
+
+            // Head (sphere on top)
+            var head = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            head.transform.SetParent(dummyGo.transform);
+            head.transform.localPosition = new Vector3(0, 1.7f, 0);
+            head.transform.localScale = new Vector3(0.25f, 0.25f, 0.25f);
+            var headCol = head.GetComponent<Collider>();
+            if (headCol != null) Object.Destroy(headCol);
+            var headRenderer = head.GetComponent<Renderer>();
+            if (headRenderer != null)
+            {
+                var mat = new Material(shader);
+                mat.color = new Color(0.7f, 0.6f, 0.45f); // Straw/burlap
+                headRenderer.material = mat;
+            }
         }
 
         private Vector3 SnapToTerrain(Vector3 pos)
