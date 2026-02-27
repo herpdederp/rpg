@@ -38,14 +38,12 @@ jobs:
             Library-WebGL-
             Library-
 
-      # Activate + Build in one step so the login token persists
-      - name: Activate License and Build WebGL
+      # Login + Build in a single Unity invocation so the license token persists
+      - name: Build WebGL
         env:
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         run: |
-          # Step 1: Login and activate in one Unity session
-          echo "=== Activating Unity license ==="
           unity-editor \
             -batchmode \
             -nographics \
@@ -53,16 +51,6 @@ jobs:
             -logFile /dev/stdout \
             -username "$UNITY_EMAIL" \
             -password "$UNITY_PASSWORD" \
-            -projectPath . \
-          || true
-
-          # Step 2: Build (license should now be cached by LicensingClient)
-          echo "=== Building WebGL ==="
-          unity-editor \
-            -batchmode \
-            -nographics \
-            -quit \
-            -logFile /dev/stdout \
             -projectPath . \
             -executeMethod BuildScript.BuildWebGL \
             -buildTarget WebGL
