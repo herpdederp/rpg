@@ -75,6 +75,12 @@ namespace FantasyGame.Enemies
             knockDir.y = 0;
             transform.position += knockDir * 0.5f;
 
+            // Sound + VFX
+            if (Audio.SoundManager.Instance != null)
+                Audio.SoundManager.Instance.PlayEnemyHit();
+            if (VFX.ParticleEffectManager.Instance != null)
+                VFX.ParticleEffectManager.Instance.SpawnHitSparks(transform.position + Vector3.up * 0.8f, knockDir);
+
             // Alert AI
             if (_ai != null)
                 _ai.OnHit(sourcePosition);
@@ -105,6 +111,12 @@ namespace FantasyGame.Enemies
             var questMgr = FindAnyObjectByType<Interaction.QuestManager>();
             if (questMgr != null)
                 questMgr.ReportEnemyKill(EnemyName);
+
+            // Sound + VFX
+            if (Audio.SoundManager.Instance != null)
+                Audio.SoundManager.Instance.PlayEnemyDeath();
+            if (VFX.ParticleEffectManager.Instance != null)
+                VFX.ParticleEffectManager.Instance.SpawnDeathPoof(transform.position + Vector3.up * 0.5f);
 
             OnDeath?.Invoke(this);
 

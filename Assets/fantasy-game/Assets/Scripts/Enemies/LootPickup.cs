@@ -40,6 +40,11 @@ namespace FantasyGame.Enemies
             bool added = inventory.Inventory.AddItem(_item, _count);
             if (added)
             {
+                if (Audio.SoundManager.Instance != null)
+                    Audio.SoundManager.Instance.PlayItemPickup();
+                if (VFX.ParticleEffectManager.Instance != null)
+                    VFX.ParticleEffectManager.Instance.SpawnLootSparkle(transform.position);
+
                 Debug.Log($"[LootPickup] Player picked up {_item.Name} x{_count}");
                 Destroy(gameObject);
             }

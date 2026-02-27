@@ -17,7 +17,7 @@ namespace FantasyGame.Interaction
         protected bool _playerInRange;
         private bool _used; // For single-use interactables
 
-        protected bool IsUsed => _used;
+        public bool IsUsed => _used;
 
         protected virtual void Update()
         {

@@ -54,6 +54,12 @@ namespace FantasyGame.Interaction
                 }
             }
 
+            // Sound + VFX
+            if (Audio.SoundManager.Instance != null)
+                Audio.SoundManager.Instance.PlayChestOpen();
+            if (VFX.ParticleEffectManager.Instance != null)
+                VFX.ParticleEffectManager.Instance.SpawnChestSparkle(transform.position + Vector3.up * 0.3f);
+
             Debug.Log("[TreasureChest] Chest opened!");
         }
 

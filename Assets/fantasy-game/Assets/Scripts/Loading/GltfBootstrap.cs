@@ -18,6 +18,8 @@ using FantasyGame.Combat;
 using FantasyGame.UI;
 using FantasyGame.Enemies;
 using FantasyGame.Interaction;
+using FantasyGame.Audio;
+using FantasyGame.VFX;
 
 namespace FantasyGame.Loading
 {
@@ -178,6 +180,9 @@ namespace FantasyGame.Loading
 
             // --- Phase 4: World Interaction ---
             SetupWorldInteraction(characterRoot);
+
+            // --- Phase 5: Polish (Audio, VFX, Minimap, Pause, Water) ---
+            SetupPolishSystems(characterRoot);
         }
 
         /// <summary>
@@ -493,6 +498,61 @@ namespace FantasyGame.Loading
             worldSpawner.Init(characterRoot.transform, questMgr);
 
             Debug.Log("[GltfBootstrap] Phase 4: World Interaction initialized (quests, NPCs, chests, day/night).");
+        }
+
+        private void SetupPolishSystems(GameObject characterRoot)
+        {
+            // --- Sound Manager ---
+            var soundGo = new GameObject("SoundManager");
+            var soundMgr = soundGo.AddComponent<SoundManager>();
+            soundMgr.Init(characterRoot.transform);
+
+            // --- Particle Effect Manager ---
+            var vfxGo = new GameObject("ParticleEffectManager");
+            var vfxMgr = vfxGo.AddComponent<ParticleEffectManager>();
+            vfxMgr.Init();
+
+            // --- Minimap ---
+            var minimapGo = new GameObject("MinimapHUD");
+            var minimap = minimapGo.AddComponent<MinimapHUD>();
+            minimap.Init(characterRoot.transform);
+
+            // --- Pause Menu ---
+            var pauseGo = new GameObject("PauseMenu");
+            var pauseMenu = pauseGo.AddComponent<PauseMenu>();
+            pauseMenu.Init();
+
+            // --- Water ---
+            var waterGo = new GameObject("WaterRenderer");
+            var water = waterGo.AddComponent<WaterRenderer>();
+            float waterLevel = _worldManager.GetTerrainHeight(0, 0) - 1.5f;
+            water.Init(characterRoot.transform, _worldManager.Terrain, waterLevel);
+
+            // --- Wire up combat events to sound + VFX ---
+            var combat = characterRoot.GetComponent<MeleeCombat>();
+            if (combat != null)
+            {
+                combat.OnAttackStart += () => soundMgr.PlaySwordSwing();
+                combat.OnAttackHit += () =>
+                {
+                    soundMgr.PlaySwordHit();
+                    // VFX spawned from enemy hit handler
+                };
+            }
+
+            // --- Wire up stats events to sound ---
+            var statsComp = characterRoot.GetComponent<PlayerStatsComponent>();
+            if (statsComp != null)
+            {
+                statsComp.Stats.OnLevelUp += (lvl) => soundMgr.PlayLevelUp();
+                statsComp.Stats.OnHealthChanged += (cur, max) =>
+                {
+                    if (cur < max) soundMgr.PlayPlayerHurt();
+                };
+                statsComp.Stats.OnDeath += () => soundMgr.PlayPlayerDeath();
+            }
+
+            Debug.Log("[GltfBootstrap] Phase 5: Polish systems initialized (audio, VFX, minimap, pause, water).");
         }
 
         private void SnapToGround(GameObject character)

@@ -119,6 +119,10 @@ namespace FantasyGame.Interaction
 
             _inDialogue = true;
             _currentLine = 0;
+
+            if (Audio.SoundManager.Instance != null)
+                Audio.SoundManager.Instance.PlayDialogueOpen();
+
             Debug.Log($"[DialogueNPC] Talking to {NPCName}");
         }
 

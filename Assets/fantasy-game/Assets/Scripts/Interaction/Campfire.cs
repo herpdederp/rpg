@@ -43,6 +43,11 @@ namespace FantasyGame.Interaction
 
             // Heal to full
             statsComp.Stats.Heal(statsComp.Stats.MaxHealth);
+
+            // Heal VFX
+            if (VFX.ParticleEffectManager.Instance != null)
+                VFX.ParticleEffectManager.Instance.SpawnHealEffect(transform.position + Vector3.up * 0.5f);
+
             Debug.Log("[Campfire] Resting... Health and stamina restored!");
 
             _cooldownTimer = REST_COOLDOWN;

@@ -111,6 +111,7 @@ public class BuildScript
             "Assets/fantasy-game/Assets/Shaders/PainterlyLit.shader",
             "Assets/fantasy-game/Assets/Shaders/PainterlyGrass.shader",
             "Assets/fantasy-game/Assets/Shaders/PainterlySky.shader",
+            "Assets/fantasy-game/Assets/Shaders/PainterlyWater.shader",
         };
 
         var preloaded = new List<Object>(PlayerSettings.GetPreloadedAssets());

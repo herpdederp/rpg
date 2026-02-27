@@ -59,6 +59,12 @@ namespace FantasyGame.Interaction
             if (_broken) return;
             _broken = true;
 
+            // Sound + VFX
+            if (Audio.SoundManager.Instance != null)
+                Audio.SoundManager.Instance.PlayBreakObject();
+            if (VFX.ParticleEffectManager.Instance != null)
+                VFX.ParticleEffectManager.Instance.SpawnBreakEffect(transform.position + Vector3.up * 0.3f);
+
             // Drop loot
             if (!string.IsNullOrEmpty(LootId) && Random.value <= LootChance)
             {
