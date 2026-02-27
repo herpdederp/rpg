@@ -17,6 +17,7 @@ using FantasyGame.RPG;
 using FantasyGame.Combat;
 using FantasyGame.UI;
 using FantasyGame.Enemies;
+using FantasyGame.Interaction;
 
 namespace FantasyGame.Loading
 {
@@ -174,6 +175,9 @@ namespace FantasyGame.Loading
 
             // --- Phase 3: Enemies ---
             SetupEnemySpawner(characterRoot.transform);
+
+            // --- Phase 4: World Interaction ---
+            SetupWorldInteraction(characterRoot);
         }
 
         /// <summary>
@@ -468,6 +472,27 @@ namespace FantasyGame.Loading
                 _enemySpawner.SetEnemyMesh("Wolf", _wolfMesh);
 
             Debug.Log("[GltfBootstrap] Enemy spawner initialized.");
+        }
+
+        private void SetupWorldInteraction(GameObject characterRoot)
+        {
+            // --- Quest Manager ---
+            var questGo = new GameObject("QuestManager");
+            var questMgr = questGo.AddComponent<QuestManager>();
+            var statsComp = characterRoot.GetComponent<PlayerStatsComponent>();
+            questMgr.Init(statsComp != null ? statsComp.Stats : null);
+
+            // --- Day/Night Cycle ---
+            var dayNightGo = new GameObject("DayNightCycle");
+            var dayNight = dayNightGo.AddComponent<DayNightCycle>();
+            dayNight.Init();
+
+            // --- World Object Spawner (NPCs, chests, campfires, crates) ---
+            var spawnerGo = new GameObject("WorldObjectSpawner");
+            var worldSpawner = spawnerGo.AddComponent<WorldObjectSpawner>();
+            worldSpawner.Init(characterRoot.transform, questMgr);
+
+            Debug.Log("[GltfBootstrap] Phase 4: World Interaction initialized (quests, NPCs, chests, day/night).");
         }
 
         private void SnapToGround(GameObject character)

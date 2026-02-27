@@ -101,6 +101,11 @@ namespace FantasyGame.Enemies
                 Debug.Log($"[Enemy] {EnemyName} defeated! +{XPReward} XP");
             }
 
+            // Report kill to quest manager
+            var questMgr = FindAnyObjectByType<Interaction.QuestManager>();
+            if (questMgr != null)
+                questMgr.ReportEnemyKill(EnemyName);
+
             OnDeath?.Invoke(this);
 
             // Death effect: shrink and destroy
