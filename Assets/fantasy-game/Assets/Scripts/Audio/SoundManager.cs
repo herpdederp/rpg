@@ -147,11 +147,11 @@ namespace FantasyGame.Audio
         {
             if (_controller == null || _player == null) return;
 
-            // Footsteps based on movement speed
+            // Footsteps based on movement speed (subtle, not every step)
             float speed = _controller.CurrentSpeed;
-            if (speed > 0.5f && _controller.IsGrounded)
+            if (speed > 1.5f && _controller.IsGrounded)
             {
-                _footstepInterval = speed > 6f ? 0.28f : 0.42f;
+                _footstepInterval = speed > 6f ? 0.38f : 0.55f;
                 _footstepTimer -= Time.deltaTime;
                 if (_footstepTimer <= 0f)
                 {
@@ -167,8 +167,8 @@ namespace FantasyGame.Audio
 
         private void PlayFootstep()
         {
-            float pitch = Random.Range(0.85f, 1.15f);
-            float vol = Random.Range(0.15f, 0.3f);
+            float pitch = Random.Range(0.75f, 1.05f);
+            float vol = Random.Range(0.06f, 0.12f);
             _footstepSource.pitch = pitch;
             _footstepSource.volume = vol;
             _footstepSource.PlayOneShot(_footstepGrass);
@@ -209,20 +209,22 @@ namespace FantasyGame.Audio
             _playerDeath = GeneratePlayerDeath();
         }
 
-        // --- Footstep: soft noise burst (grass) ---
+        // --- Footstep: very soft muffled thud (grass) ---
         private AudioClip GenerateFootstepGrass()
         {
             int sampleRate = 22050;
-            int samples = (int)(sampleRate * 0.08f);
+            int samples = (int)(sampleRate * 0.07f);
             float[] data = new float[samples];
+            float prev = 0f;
             for (int i = 0; i < samples; i++)
             {
                 float t = (float)i / samples;
-                float envelope = (1f - t) * (1f - t); // Fast decay
-                float noise = (Random.value * 2f - 1f) * 0.3f;
-                // Low-pass approximation
-                float lowFreq = Mathf.Sin(t * 220f) * 0.15f;
-                data[i] = (noise + lowFreq) * envelope;
+                float envelope = Mathf.Exp(-t * 25f); // Very fast decay — just a soft thump
+                float noise = (Random.value * 2f - 1f) * 0.2f;
+                // Heavy low-pass to remove harshness
+                float filtered = noise * 0.15f + prev * 0.85f;
+                prev = filtered;
+                data[i] = filtered * envelope;
             }
             return CreateClip("footstep_grass", data, sampleRate);
         }
