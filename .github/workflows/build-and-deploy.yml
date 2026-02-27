@@ -20,8 +20,6 @@ jobs:
   build:
     name: Build WebGL
     runs-on: ubuntu-latest
-    container:
-      image: unityci/editor:ubuntu-6000.3.10f1-webgl-3
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -38,43 +36,63 @@ jobs:
             Library-WebGL-
             Library-
 
-      # Write the license file where Unity 6 expects it
-      - name: Activate Unity License
+      # Use unity-license-activate to generate a proper .ulf for the CI machine
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Generate Unity License
         env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         run: |
-          # Write entitlement license where Unity 6 LicensingClient looks for it
-          UNITY_LICENSE_DIR="/root/.config/unity3d/Unity"
-          mkdir -p "$UNITY_LICENSE_DIR"
-          echo "$UNITY_LICENSE" > "$UNITY_LICENSE_DIR/UnityEntitlementLicense.xml"
-          echo "License file written to $UNITY_LICENSE_DIR/UnityEntitlementLicense.xml"
+          npm install -g unity-license-activate
 
-          # Also write to the legacy location just in case
-          mkdir -p /root/.local/share/unity3d/Unity
-          echo "$UNITY_LICENSE" > /root/.local/share/unity3d/Unity/Unity_lic.ulf
+          # Generate the .alf activation request file
+          docker run --rm \
+            -v "$(pwd)":/project \
+            unityci/editor:ubuntu-6000.3.10f1-webgl-3 \
+            unity-editor -batchmode -nographics -createManualActivationFile -logFile /dev/stdout -quit || true
 
-          # And the global location
-          mkdir -p /usr/share/unity3d/config
-          echo "$UNITY_LICENSE" > /usr/share/unity3d/config/Unity_lic.ulf
+          ALF_FILE=$(find . -name "*.alf" -maxdepth 1 | head -1)
+          if [ -z "$ALF_FILE" ]; then
+            echo "No .alf file found, checking other locations..."
+            ALF_FILE=$(find /tmp -name "*.alf" 2>/dev/null | head -1)
+          fi
 
-      # Build WebGL
+          if [ -z "$ALF_FILE" ]; then
+            echo "ERROR: Could not generate .alf file"
+            exit 1
+          fi
+
+          echo "Found ALF: $ALF_FILE"
+
+          # Use unity-license-activate to convert .alf to .ulf via Unity's website
+          unity-license-activate "$UNITY_EMAIL" "$UNITY_PASSWORD" "$ALF_FILE" || true
+
+          ULF_FILE=$(find . -name "*.ulf" -maxdepth 1 | head -1)
+          if [ -z "$ULF_FILE" ]; then
+            echo "ERROR: Could not generate .ulf file"
+            exit 1
+          fi
+
+          echo "Generated ULF: $ULF_FILE"
+          echo "UNITY_LICENSE_CONTENT<<EOF" >> $GITHUB_ENV
+          cat "$ULF_FILE" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      # Build using GameCI with the freshly generated license
       - name: Build WebGL
+        uses: game-ci/unity-builder@v4
         env:
+          UNITY_LICENSE: ${{ env.UNITY_LICENSE_CONTENT }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-        run: |
-          unity-editor \
-            -batchmode \
-            -nographics \
-            -quit \
-            -logFile /dev/stdout \
-            -username "$UNITY_EMAIL" \
-            -password "$UNITY_PASSWORD" \
-            -projectPath . \
-            -executeMethod BuildScript.BuildWebGL \
-            -buildTarget WebGL
+        with:
+          targetPlatform: WebGL
+          unityVersion: 6000.3.10f1
+          buildMethod: BuildScript.BuildWebGL
 
       # Upload build artifact
       - name: Upload build artifact
