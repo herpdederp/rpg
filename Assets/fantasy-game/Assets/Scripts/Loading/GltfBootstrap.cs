@@ -101,8 +101,9 @@ namespace FantasyGame.Loading
             _worldManager = worldGo.AddComponent<WorldManager>();
             _worldManager.Init(WORLD_SEED, terrainMat, vegetationMat, grassMat, treeMeshes, rockMeshes);
 
-            // Pre-generate terrain chunks around spawn so the ground exists before the player
-            _worldManager.Terrain.UpdateChunks(Vector3.zero);
+            // Pre-generate terrain chunks around spawn (village plateau)
+            var spawnPos = new Vector3(80f, 0f, 80f);
+            _worldManager.Terrain.UpdateChunks(spawnPos);
             // Wait a frame so MeshColliders are baked by physics
             await Task.Yield();
 
@@ -129,9 +130,10 @@ namespace FantasyGame.Loading
             // Instantiate with GameObjectInstantiator (needed for animations)
             var characterRoot = new GameObject("Character");
 
-            // Spawn at terrain height
-            float spawnHeight = _worldManager.GetTerrainHeight(0, 0);
-            characterRoot.transform.position = new Vector3(0, spawnHeight + 0.5f, 0);
+            // Spawn at village plateau
+            float spawnX = 80f, spawnZ = 80f;
+            float spawnHeight = _worldManager.GetTerrainHeight(spawnX, spawnZ);
+            characterRoot.transform.position = new Vector3(spawnX, spawnHeight + 0.5f, spawnZ);
 
             var instantiator = new GameObjectInstantiator(gltf, characterRoot.transform);
             bool instantiated = await gltf.InstantiateMainSceneAsync(instantiator);
