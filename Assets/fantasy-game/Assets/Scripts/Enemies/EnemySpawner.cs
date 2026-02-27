@@ -240,7 +240,7 @@ namespace FantasyGame.Enemies
                         if (hit.normal.y > 0.7f)
                         {
                             // Keep enemies away from flat zones (villages, etc.)
-                            if (!IsNearFlatZone(candidate.x, candidate.z, 16f))
+                            if (!IsNearFlatZone(candidate.x, candidate.z, 40f))
                             {
                                 return hit.point + Vector3.up * 0.1f;
                             }
