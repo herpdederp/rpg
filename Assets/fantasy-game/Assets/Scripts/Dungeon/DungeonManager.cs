@@ -63,6 +63,7 @@ namespace FantasyGame.Dungeon
             public float ZOffset, YOffset;
             public float Width, Depth;
             public bool DoorNorth, DoorSouth;
+            public bool OpenNorth; // No north wall at all (for ramp entry)
         }
 
         public void Init(Transform player, QuestManager questMgr, int seed,
@@ -270,7 +271,8 @@ namespace FantasyGame.Dungeon
             var rooms = new RoomDef[]
             {
                 // Entry room: north wall at ZOffset + Depth/2 = -11.5 + 5 = -6.5 (meets ramp bottom)
-                new RoomDef { Name = "Entry",     ZOffset = -11.5f, YOffset = -3f,   Width = 10, Depth = 10, DoorNorth = true, DoorSouth = true },
+                // OpenNorth = true: no north wall at all, wide open for the ramp entrance
+                new RoomDef { Name = "Entry",     ZOffset = -11.5f, YOffset = -3f,   Width = 10, Depth = 10, DoorNorth = true, DoorSouth = true, OpenNorth = true },
                 new RoomDef { Name = "Corr1",     ZOffset = -20f,   YOffset = -3.5f, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
                 new RoomDef { Name = "Combat1",   ZOffset = -29f,   YOffset = -4f,   Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true },
                 new RoomDef { Name = "Corr2",     ZOffset = -39f,   YOffset = -4.5f, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
@@ -286,7 +288,7 @@ namespace FantasyGame.Dungeon
             foreach (var room in rooms)
             {
                 Vector3 center = _entrancePos + new Vector3(0, room.YOffset, room.ZOffset);
-                BuildRoom(center, room.Width, room.Depth, ROOM_HEIGHT, room.DoorNorth, room.DoorSouth);
+                BuildRoom(center, room.Width, room.Depth, ROOM_HEIGHT, room.DoorNorth, room.DoorSouth, room.OpenNorth);
             }
 
             // Entrance ramp: the terrain itself slopes down via the registered RampZone
@@ -337,7 +339,7 @@ namespace FantasyGame.Dungeon
         // ===================================================================
 
         private void BuildRoom(Vector3 center, float width, float depth, float height,
-            bool doorNorth, bool doorSouth)
+            bool doorNorth, bool doorSouth, bool openNorth = false)
         {
             // Floor
             CreateWall(center + new Vector3(0, -WALL_THICKNESS * 0.5f, 0),
@@ -347,8 +349,12 @@ namespace FantasyGame.Dungeon
             CreateWall(center + new Vector3(0, height + WALL_THICKNESS * 0.5f, 0),
                 new Vector3(width + 2f, WALL_THICKNESS, depth + 2f), _ceilingMat);
 
-            // North wall (+Z)
-            if (doorNorth)
+            // North wall (+Z) — skip entirely if openNorth
+            if (openNorth)
+            {
+                // No north wall — wide open for ramp entrance
+            }
+            else if (doorNorth)
                 BuildWallWithDoor(center, width, height, depth * 0.5f, true);
             else
                 CreateWall(center + new Vector3(0, height * 0.5f, depth * 0.5f),
@@ -414,27 +420,46 @@ namespace FantasyGame.Dungeon
         }
 
         /// <summary>
-        /// Builds guide walls along the terrain ramp entrance. The terrain itself
-        /// is the walkable surface (depressed via RampZone). These walls just keep
-        /// the player on the path down to the entry room doorway.
+        /// Builds the entrance ramp — a physical angled surface from the entrance
+        /// arch down to the entry room floor, plus guide walls on both sides.
+        /// This sits slightly above the terrain so it's always the walkable surface.
         /// </summary>
         private void BuildEntranceGuideWalls()
         {
-            // Ramp runs from Z=130 (entrance) to Z=123.5 (entry room north wall)
-            // Terrain Y goes from _entranceTerrainY to _entranceTerrainY - 3
-            float rampNorthZ = ENTRANCE_Z;
-            float rampSouthZ = ENTRANCE_Z - 6.5f;
-            float rampMidZ = (rampNorthZ + rampSouthZ) * 0.5f;
-            float rampLength = rampNorthZ - rampSouthZ + 1f; // a little extra
-            float rampMidY = _entranceTerrainY - 1.5f;
+            float rampTopZ = ENTRANCE_Z;          // Z=130
+            float rampBottomZ = ENTRANCE_Z - 6.5f; // Z=123.5 (entry room north wall)
+            float rampTopY = _entranceTerrainY;    // surface level
+            float rampBottomY = _entranceTerrainY - 3f; // entry room floor
+
+            Vector3 topPos = new Vector3(ENTRANCE_X, rampTopY, rampTopZ);
+            Vector3 bottomPos = new Vector3(ENTRANCE_X, rampBottomY, rampBottomZ);
+            Vector3 mid = (topPos + bottomPos) * 0.5f;
+            Vector3 dir = bottomPos - topPos;
+            float slopeLength = dir.magnitude;
+            float angle = Mathf.Atan2(-dir.y, Mathf.Abs(dir.z)) * Mathf.Rad2Deg;
+
+            // Physical ramp surface — angled cube the player walks on
+            // Slightly above terrain so it's always the contact surface
+            var ramp = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            ramp.transform.SetParent(_dungeonRoot.transform);
+            ramp.transform.position = mid + Vector3.up * 0.1f;
+            ramp.transform.localScale = new Vector3(CORRIDOR_WIDTH + 0.5f, 0.4f, slopeLength + 0.5f);
+            ramp.transform.rotation = Quaternion.Euler(angle, 0, 0);
+            ramp.GetComponent<Renderer>().material = _floorMat;
+            ramp.name = "EntranceRamp";
+
+            // Guide walls on both sides
+            float wallMidZ = (rampTopZ + rampBottomZ) * 0.5f;
+            float wallLength = (rampTopZ - rampBottomZ) + 2f;
+            float wallMidY = (rampTopY + rampBottomY) * 0.5f;
 
             for (int side = -1; side <= 1; side += 2)
             {
                 var sideWall = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 sideWall.transform.SetParent(_dungeonRoot.transform);
                 float wallX = ENTRANCE_X + side * (CORRIDOR_WIDTH * 0.5f + WALL_THICKNESS * 0.5f);
-                sideWall.transform.position = new Vector3(wallX, rampMidY, rampMidZ);
-                sideWall.transform.localScale = new Vector3(WALL_THICKNESS, 5f, rampLength);
+                sideWall.transform.position = new Vector3(wallX, wallMidY, wallMidZ);
+                sideWall.transform.localScale = new Vector3(WALL_THICKNESS, 6f, wallLength);
                 sideWall.GetComponent<Renderer>().material = _wallMat;
                 sideWall.name = "RampGuideWall";
             }
