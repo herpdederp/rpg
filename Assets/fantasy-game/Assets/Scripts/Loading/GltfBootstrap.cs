@@ -556,7 +556,7 @@ namespace FantasyGame.Loading
             var dungeonGo = new GameObject("DungeonManager");
             var dungeonMgr = dungeonGo.AddComponent<DungeonManager>();
             dungeonMgr.Init(characterRoot.transform, questMgr, WORLD_SEED,
-                _dungeonMeshes, _slimeMesh, _skeletonMesh, _wolfMesh);
+                _dungeonMeshes);
 
             Debug.Log("[GltfBootstrap] Phase 4: World Interaction initialized (quests, NPCs, chests, day/night, dungeon).");
         }

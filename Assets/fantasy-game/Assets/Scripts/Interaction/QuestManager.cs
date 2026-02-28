@@ -95,10 +95,10 @@ namespace FantasyGame.Interaction
             AddQuest(new Quest
             {
                 Id = "clear_dungeon",
-                Title = "Dungeon Guardian",
-                Description = "Defeat the Dungeon Guardian in the cave northeast of the village.",
-                Type = QuestType.KillEnemies,
-                TargetId = "DungeonGuardian",
+                Title = "Dungeon Explorer",
+                Description = "Complete the dungeon puzzles and find the exit.",
+                Type = QuestType.CollectItems,
+                TargetId = "dungeon_exit_token",
                 TargetCount = 1,
                 XPReward = 200,
                 ItemReward = "potion_large",

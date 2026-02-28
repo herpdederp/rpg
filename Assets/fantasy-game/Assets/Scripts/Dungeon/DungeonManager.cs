@@ -1,14 +1,12 @@
 // Assets/Scripts/Dungeon/DungeonManager.cs
 // ===========================================
 // Core dungeon orchestrator. Generates rooms at the cave entrance location,
-// manages lighting, spawns enemies/torches/chest/boss/exit, and handles
-// enter/exit transitions. Rooms are built below terrain surface extending
-// in -Z from the entrance. A terrain hole is carved for the full dungeon
-// length so the player can walk down a ramp into the underground rooms.
+// manages lighting, spawns puzzle elements/torches/chest/exit, and handles
+// enter/exit transitions. Rooms are built below terrain surface. Player
+// teleports into the dungeon when walking near the entrance arch.
 
 using System.Collections.Generic;
 using UnityEngine;
-using FantasyGame.Enemies;
 using FantasyGame.RPG;
 using FantasyGame.Interaction;
 using FantasyGame.Utils;
@@ -35,14 +33,12 @@ namespace FantasyGame.Dungeon
         private QuestManager _questMgr;
         private int _seed;
         private Mesh[] _dungeonMeshes;  // [0]=CaveEntrance, [1]=TorchSconce, [2]=ExitPortal
-        private Mesh _slimeMesh, _skeletonMesh, _wolfMesh;
 
         // Runtime
         private GameObject _dungeonRoot;
         private GameObject _entranceGo;
         private Vector3 _entrancePos;
         private float _entranceTerrainY;
-        private List<EnemyBase> _dungeonEnemies = new List<EnemyBase>();
 
         // Saved overworld state
         private Vector3 _savedPlayerPos;
@@ -68,16 +64,13 @@ namespace FantasyGame.Dungeon
         }
 
         public void Init(Transform player, QuestManager questMgr, int seed,
-            Mesh[] dungeonMeshes, Mesh slimeMesh, Mesh skeletonMesh, Mesh wolfMesh)
+            Mesh[] dungeonMeshes)
         {
             Instance = this;
             _player = player;
             _questMgr = questMgr;
             _seed = seed;
             _dungeonMeshes = dungeonMeshes ?? new Mesh[0];
-            _slimeMesh = slimeMesh;
-            _skeletonMesh = skeletonMesh;
-            _wolfMesh = wolfMesh;
 
             // Create shared materials
             var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
@@ -103,21 +96,26 @@ namespace FantasyGame.Dungeon
                 }
             }
 
-            // Get terrain height at entrance
-            // Note: flat zone is registered in GltfBootstrap before terrain generation
-            _entranceTerrainY = NoiseUtils.SampleHeight(ENTRANCE_X, ENTRANCE_Z, seed);
+            // Register puzzle items in ItemDatabase
+            ItemDatabase.Register(new ItemData("red_key", "Red Key", ItemType.Quest, 0,
+                "An ornate red key.", new Color(0.9f, 0.2f, 0.2f)));
+            ItemDatabase.Register(new ItemData("blue_key", "Blue Key", ItemType.Quest, 0,
+                "A shimmering blue key.", new Color(0.3f, 0.5f, 1f)));
+            ItemDatabase.Register(new ItemData("dungeon_exit_token", "Dungeon Token", ItemType.Quest, 0,
+                "Proof of dungeon completion.", new Color(1f, 0.85f, 0.3f)));
 
+            // Get terrain height at entrance
+            _entranceTerrainY = NoiseUtils.SampleHeight(ENTRANCE_X, ENTRANCE_Z, seed);
             _entrancePos = new Vector3(ENTRANCE_X, _entranceTerrainY, ENTRANCE_Z);
 
             // Spawn the entrance arch on the overworld (always visible)
             SpawnEntranceOnOverworld();
 
-            // Generate dungeon rooms underground — player walks through the
-            // arch and down a ramp that descends beneath the terrain.
+            // Generate dungeon rooms underground
             GenerateDungeon();
 
             Debug.Log("[DungeonManager] Initialized. Entrance at " +
-                $"({ENTRANCE_X}, {ENTRANCE_Z}), terrainY={_entranceTerrainY:F1}. Dungeon built.");
+                $"({ENTRANCE_X}, {ENTRANCE_Z}), terrainY={_entranceTerrainY:F1}. Puzzle dungeon built.");
         }
 
         private void SpawnEntranceOnOverworld()
@@ -297,29 +295,28 @@ namespace FantasyGame.Dungeon
             _dungeonRoot = new GameObject("DungeonInterior");
 
             // Room definitions — all at Y=-20, computed Z offsets so rooms are perfectly flush.
-            // Each room's north wall touches the previous room's south wall exactly.
             float Y = -20f;
             float z = 0f; // running Z cursor (relative to entrance)
 
-            // Entry: starts at z=0, depth 10 → center at z=-5, south wall at z=-10
-            z -= 5f; // center
+            // Entry: starts at z=0, depth 10 -> center at z=-5, south wall at z=-10
+            z -= 5f;
             var entry = new RoomDef { Name = "Entry", ZOffset = z, YOffset = Y, Width = 10, Depth = 10, DoorNorth = false, DoorSouth = true };
-            z -= 5f; // past south wall
+            z -= 5f;
 
-            z -= 3f; // corridor half-depth
+            z -= 3f;
             var corr1 = new RoomDef { Name = "Corr1", ZOffset = z, YOffset = Y, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true };
             z -= 3f;
 
             z -= 6f;
-            var combat1 = new RoomDef { Name = "Combat1", ZOffset = z, YOffset = Y, Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true };
+            var pushPlate = new RoomDef { Name = "PushPlate", ZOffset = z, YOffset = Y, Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true };
             z -= 6f;
 
             z -= 3f;
-            var corr2 = new RoomDef { Name = "Corr2", ZOffset = z, YOffset = Y, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true };
+            var redKeyDoor = new RoomDef { Name = "RedKeyDoor", ZOffset = z, YOffset = Y, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true };
             z -= 3f;
 
             z -= 6f;
-            var combat2 = new RoomDef { Name = "Combat2", ZOffset = z, YOffset = Y, Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true };
+            var switchRoom = new RoomDef { Name = "SwitchRoom", ZOffset = z, YOffset = Y, Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true };
             z -= 6f;
 
             z -= 3f;
@@ -331,17 +328,17 @@ namespace FantasyGame.Dungeon
             z -= 5f;
 
             z -= 3f;
-            var corr4 = new RoomDef { Name = "Corr4", ZOffset = z, YOffset = Y, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true };
+            var blueKeyDoor = new RoomDef { Name = "BlueKeyDoor", ZOffset = z, YOffset = Y, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true };
             z -= 3f;
 
             z -= 8f;
-            var boss = new RoomDef { Name = "Boss", ZOffset = z, YOffset = Y, Width = 16, Depth = 16, DoorNorth = true, DoorSouth = true };
+            var finalChallenge = new RoomDef { Name = "FinalChallenge", ZOffset = z, YOffset = Y, Width = 16, Depth = 16, DoorNorth = true, DoorSouth = true };
             z -= 8f;
 
             z -= 3f;
             var exit = new RoomDef { Name = "Exit", ZOffset = z, YOffset = Y, Width = 6, Depth = 6, DoorNorth = true, DoorSouth = false };
 
-            var rooms = new RoomDef[] { entry, corr1, combat1, corr2, combat2, corr3, treasure, corr4, boss, exit };
+            var rooms = new RoomDef[] { entry, corr1, pushPlate, redKeyDoor, switchRoom, corr3, treasure, blueKeyDoor, finalChallenge, exit };
 
             // Build each room
             foreach (var room in rooms)
@@ -352,16 +349,14 @@ namespace FantasyGame.Dungeon
             }
 
             // Build corridor connectors between each pair of adjacent rooms
-            // (floor, walls, ceiling bridging any gap at the doorway boundary)
             for (int i = 0; i < rooms.Length - 1; i++)
             {
                 float southZ = rooms[i].ZOffset - rooms[i].Depth * 0.5f;
                 float northZ = rooms[i + 1].ZOffset + rooms[i + 1].Depth * 0.5f;
                 float gapSize = Mathf.Abs(southZ - northZ);
 
-                // Even if gap is 0, add a connector floor slab to ensure no seam
                 float connZ = (southZ + northZ) * 0.5f;
-                float connDepth = Mathf.Max(gapSize, 1f); // at least 1m connector
+                float connDepth = Mathf.Max(gapSize, 1f);
                 Vector3 connCenter = _entrancePos + new Vector3(0, Y, connZ);
 
                 // Floor
@@ -380,25 +375,25 @@ namespace FantasyGame.Dungeon
                 }
             }
 
-            // Spawn content in rooms
-            SpawnEntryRoomContent(rooms[0]);
-            SpawnCombatRoom1Content(rooms[2]);
-            SpawnCombatRoom2Content(rooms[4]);
-            SpawnTreasureRoomContent(rooms[6]);
-            SpawnBossRoomContent(rooms[8]);
-            SpawnExitRoomContent(rooms[9]);
+            // Spawn puzzle content in rooms
+            SpawnEntryRoomContent(rooms[0]);         // Tutorial pressure plate
+            SpawnPushPlateRoom(rooms[2]);             // Push block + plate + red key
+            SpawnRedKeyDoorContent(rooms[3]);         // Red key door
+            SpawnSwitchRoom(rooms[4]);                // Switch sequence puzzle
+            SpawnTreasureRoomContent(rooms[6]);       // Chest + blue key
+            SpawnBlueKeyDoorContent(rooms[7]);        // Blue key door
+            SpawnFinalChallenge(rooms[8]);            // 2 blocks + 2 plates + switch
+            SpawnExitRoomContent(rooms[9]);           // Exit portal
 
-            // Torches in ALL rooms — brighter dungeon
+            // Torches in ALL rooms
             foreach (var room in rooms)
             {
                 Vector3 center = _entrancePos + new Vector3(0, room.YOffset, room.ZOffset);
                 float hw = room.Width * 0.4f;
 
-                // Two torches on opposite walls for every room
                 SpawnDungeonTorch(center + new Vector3(hw, 2f, 0));
                 SpawnDungeonTorch(center + new Vector3(-hw, 2f, 0));
 
-                // Extra torches in larger rooms
                 if (room.Width > 8f)
                 {
                     float hd = room.Depth * 0.4f;
@@ -412,7 +407,7 @@ namespace FantasyGame.Dungeon
             // Hide dungeon until player enters (teleport-based)
             _dungeonRoot.SetActive(false);
 
-            Debug.Log($"[DungeonManager] Generated {rooms.Length} underground rooms.");
+            Debug.Log($"[DungeonManager] Generated {rooms.Length} puzzle dungeon rooms.");
         }
 
         // ===================================================================
@@ -426,15 +421,15 @@ namespace FantasyGame.Dungeon
             CreateWall(center + new Vector3(0, -WALL_THICKNESS * 0.5f, 0),
                 new Vector3(width, WALL_THICKNESS, depth), _floorMat);
 
-            // Ceiling (skip for entry room — terrain acts as ceiling)
+            // Ceiling
             if (!noCeiling)
                 CreateWall(center + new Vector3(0, height + WALL_THICKNESS * 0.5f, 0),
                     new Vector3(width + 2f, WALL_THICKNESS, depth + 2f), _ceilingMat);
 
-            // North wall (+Z) — skip entirely if openNorth
+            // North wall (+Z)
             if (openNorth)
             {
-                // No north wall — wide open for ramp entrance
+                // No north wall
             }
             else if (doorNorth)
                 BuildWallWithDoor(center, width, height, depth * 0.5f, true);
@@ -501,47 +496,8 @@ namespace FantasyGame.Dungeon
             return wall;
         }
 
-        /// <summary>
-        /// Builds a short connecting ramp between two adjacent rooms with different floor heights.
-        /// </summary>
-        private void BuildRamp(Vector3 topPos, Vector3 bottomPos)
-        {
-            Vector3 mid = (topPos + bottomPos) * 0.5f;
-            Vector3 dir = bottomPos - topPos;
-            float length = dir.magnitude;
-            if (length < 0.1f) return; // rooms are flush, no ramp needed
-
-            float angle = Mathf.Atan2(dir.y, -Mathf.Abs(dir.z)) * Mathf.Rad2Deg;
-
-            // Ramp surface
-            var ramp = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            ramp.transform.SetParent(_dungeonRoot.transform);
-            ramp.transform.position = mid;
-            ramp.transform.localScale = new Vector3(CORRIDOR_WIDTH, 0.3f, length);
-            ramp.transform.rotation = Quaternion.Euler(-angle, 0, 0);
-            ramp.GetComponent<Renderer>().material = _floorMat;
-
-            // Side walls along ramp
-            for (int side = -1; side <= 1; side += 2)
-            {
-                var sideWall = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                sideWall.transform.SetParent(_dungeonRoot.transform);
-                sideWall.transform.position = mid + new Vector3(
-                    side * (CORRIDOR_WIDTH * 0.5f + WALL_THICKNESS * 0.5f), 1.5f, 0);
-                sideWall.transform.localScale = new Vector3(WALL_THICKNESS, 5f, length + 1f);
-                sideWall.GetComponent<Renderer>().material = _wallMat;
-            }
-
-            // Ceiling over transition
-            var ceil = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            ceil.transform.SetParent(_dungeonRoot.transform);
-            ceil.transform.position = mid + new Vector3(0, ROOM_HEIGHT + 0.25f, 0);
-            ceil.transform.localScale = new Vector3(CORRIDOR_WIDTH + WALL_THICKNESS * 2f, 0.5f, length + 1f);
-            ceil.GetComponent<Renderer>().material = _ceilingMat;
-        }
-
         // ===================================================================
-        //  ROOM CONTENT SPAWNING
+        //  PUZZLE ROOM CONTENT SPAWNING
         // ===================================================================
 
         private Vector3 RoomCenter(RoomDef room)
@@ -549,70 +505,403 @@ namespace FantasyGame.Dungeon
             return _entrancePos + new Vector3(0, room.YOffset, room.ZOffset);
         }
 
+        /// <summary>
+        /// Creates a PuzzleDoor at the south doorway of a room.
+        /// The door blocks the corridor-width opening at the south wall.
+        /// </summary>
+        private PuzzleDoor SpawnPuzzleDoor(RoomDef room)
+        {
+            Vector3 center = RoomCenter(room);
+            Vector3 doorPos = center + new Vector3(0, 1.75f, -room.Depth * 0.5f);
+
+            var doorGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            doorGo.name = $"PuzzleDoor_{room.Name}";
+            doorGo.transform.SetParent(_dungeonRoot.transform);
+            doorGo.transform.position = doorPos;
+            doorGo.transform.localScale = new Vector3(CORRIDOR_WIDTH - 0.1f, 3.5f, 0.4f);
+
+            var door = doorGo.AddComponent<PuzzleDoor>();
+            door.Init(3.5f);
+            return door;
+        }
+
+        // --- Room 0: Entry — Tutorial pressure plate ---
         private void SpawnEntryRoomContent(RoomDef room)
         {
             Vector3 center = RoomCenter(room);
-            SpawnDungeonTorch(center + new Vector3(room.Width * 0.4f, 2f, room.Depth * 0.3f));
-            SpawnDungeonTorch(center + new Vector3(-room.Width * 0.4f, 2f, -room.Depth * 0.3f));
+
+            // Puzzle door at south exit
+            var door = SpawnPuzzleDoor(room);
+
+            // Pressure plate in center of room
+            var plateGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            plateGo.name = "PressurePlate_Tutorial";
+            plateGo.transform.SetParent(_dungeonRoot.transform);
+            plateGo.transform.position = center + new Vector3(0, 0.05f, 0);
+            plateGo.transform.localScale = new Vector3(2f, 0.1f, 2f);
+
+            var plate = plateGo.AddComponent<PressurePlate>();
+            plate.Init(door, stayDown: true);
+
+            // Hint sign on north wall
+            SpawnHintText(center + new Vector3(0, 2.5f, room.Depth * 0.45f),
+                "Step on the plate to open the way.", 0.4f);
+
+            Debug.Log("[DungeonManager] Entry room: tutorial pressure plate spawned.");
         }
 
-        private void SpawnCombatRoom1Content(RoomDef room)
+        // --- Room 2: Push Block Puzzle ---
+        private void SpawnPushPlateRoom(RoomDef room)
         {
             Vector3 center = RoomCenter(room);
-            SpawnRoomCornerTorches(center, room.Width, room.Depth);
 
-            SpawnDungeonEnemy(center + new Vector3(-3f, 0.5f, 0), "DungeonSlime",
-                _slimeMesh, new Color(0.2f, 0.6f, 0.2f), 40, 6, 2.5f, 12f, 18f, 1.5f, 25,
-                "slime_gel", 1, 0.6f, Vector3.one * 0.8f);
-            SpawnDungeonEnemy(center + new Vector3(3f, 0.5f, 2f), "DungeonSlime",
-                _slimeMesh, new Color(0.2f, 0.6f, 0.2f), 40, 6, 2.5f, 12f, 18f, 1.5f, 25,
-                "slime_gel", 1, 0.6f, Vector3.one * 0.8f);
-            SpawnDungeonEnemy(center + new Vector3(0, 0.5f, -3f), "DungeonSlime",
-                _slimeMesh, new Color(0.2f, 0.6f, 0.2f), 40, 6, 2.5f, 12f, 18f, 1.5f, 25,
-                "slime_gel", 1, 0.6f, Vector3.one * 0.8f);
+            // Door at south exit
+            var door = SpawnPuzzleDoor(room);
+
+            // Pressure plate on the right side of the room
+            var plateGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            plateGo.name = "PressurePlate_PushBlock";
+            plateGo.transform.SetParent(_dungeonRoot.transform);
+            plateGo.transform.position = center + new Vector3(3f, 0.05f, -2f);
+            plateGo.transform.localScale = new Vector3(2f, 0.1f, 2f);
+
+            var plate = plateGo.AddComponent<PressurePlate>();
+            plate.Init(door, stayDown: false);
+
+            // Pushable block on the left side
+            var blockGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            blockGo.name = "PushableBlock_1";
+            blockGo.transform.SetParent(_dungeonRoot.transform);
+            blockGo.transform.position = center + new Vector3(-3f, 0.6f, 1f);
+            blockGo.transform.localScale = new Vector3(1.2f, 1.2f, 1.2f);
+            var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            blockGo.GetComponent<Renderer>().material = new Material(shader) { color = new Color(0.45f, 0.4f, 0.35f) };
+
+            var block = blockGo.AddComponent<PushableBlock>();
+            block.Init();
+
+            // Red Key on a pedestal in the back of the room
+            SpawnKeyPickup(center + new Vector3(-4f, 0.8f, -4f), "red_key", "Red Key",
+                new Color(0.9f, 0.2f, 0.2f));
+
+            // Hint text
+            SpawnHintText(center + new Vector3(0, 2.5f, room.Depth * 0.45f),
+                "Push the block. Find the key.", 0.35f);
+
+            Debug.Log("[DungeonManager] Push plate room: block + plate + red key spawned.");
         }
 
-        private void SpawnCombatRoom2Content(RoomDef room)
+        // --- Room 3: Red Key Door ---
+        private void SpawnRedKeyDoorContent(RoomDef room)
         {
             Vector3 center = RoomCenter(room);
-            SpawnRoomCornerTorches(center, room.Width, room.Depth);
 
-            SpawnDungeonEnemy(center + new Vector3(-4f, 0.5f, 2f), "DungeonSkeleton",
-                _skeletonMesh, new Color(0.85f, 0.82f, 0.75f), 80, 15, 3f, 14f, 20f, 1.2f, 50,
-                "bone_fragment", 1, 0.7f, Vector3.one);
-            SpawnDungeonEnemy(center + new Vector3(4f, 0.5f, -2f), "DungeonSkeleton",
-                _skeletonMesh, new Color(0.85f, 0.82f, 0.75f), 80, 15, 3f, 14f, 20f, 1.2f, 50,
-                "bone_fragment", 1, 0.7f, Vector3.one);
-            SpawnDungeonEnemy(center + new Vector3(0, 0.5f, 0), "DungeonWolf",
-                _wolfMesh, new Color(0.4f, 0.35f, 0.3f), 60, 12, 5f, 16f, 22f, 1f, 40,
-                "wolf_pelt", 1, 0.6f, Vector3.one);
+            // Puzzle door (physical gate) blocking the corridor
+            var gate = SpawnPuzzleDoor(room);
+
+            // Key door interactable at the gate position
+            var keyDoorGo = new GameObject("KeyDoor_Red");
+            keyDoorGo.transform.SetParent(_dungeonRoot.transform);
+            keyDoorGo.transform.position = center + new Vector3(0, 1f, 0);
+
+            var col = keyDoorGo.AddComponent<BoxCollider>();
+            col.size = new Vector3(CORRIDOR_WIDTH, 3.5f, 1f);
+            col.center = new Vector3(0, 0.75f, 0);
+
+            var keyDoor = keyDoorGo.AddComponent<KeyDoor>();
+            keyDoor.Init("red_key", "Red Key", gate);
+
+            // Decorative red markers on walls
+            SpawnColoredMarker(center + new Vector3(CORRIDOR_WIDTH * 0.4f, 2f, 0), new Color(0.9f, 0.2f, 0.2f));
+            SpawnColoredMarker(center + new Vector3(-CORRIDOR_WIDTH * 0.4f, 2f, 0), new Color(0.9f, 0.2f, 0.2f));
+
+            Debug.Log("[DungeonManager] Red key door spawned.");
         }
 
+        // --- Room 4: Switch Sequence ---
+        private void SpawnSwitchRoom(RoomDef room)
+        {
+            Vector3 center = RoomCenter(room);
+
+            // Door at south exit
+            var door = SpawnPuzzleDoor(room);
+
+            // Sequence puzzle manager
+            var puzzleGo = new GameObject("SwitchSequencePuzzle");
+            puzzleGo.transform.SetParent(_dungeonRoot.transform);
+            puzzleGo.transform.position = center;
+            var seqPuzzle = puzzleGo.AddComponent<SwitchSequencePuzzle>();
+
+            // Three switches on walls — labeled I, II, III visually
+            var switches = new PuzzleSwitch[3];
+
+            // Switch I (index 0) — left wall
+            switches[0] = SpawnWallSwitch(center + new Vector3(-room.Width * 0.45f, 1.5f, 2f),
+                null, seqPuzzle, 0);
+
+            // Switch II (index 1) — right wall
+            switches[1] = SpawnWallSwitch(center + new Vector3(room.Width * 0.45f, 1.5f, -2f),
+                null, seqPuzzle, 1);
+
+            // Switch III (index 2) — back wall
+            switches[2] = SpawnWallSwitch(center + new Vector3(0, 1.5f, -room.Depth * 0.45f),
+                null, seqPuzzle, 2);
+
+            // Correct order: III (2), I (0), II (1)
+            seqPuzzle.Init(new int[] { 2, 0, 1 }, door, switches);
+
+            // Labels near each switch
+            SpawnHintText(center + new Vector3(-room.Width * 0.45f, 2.8f, 2f), "I", 0.5f);
+            SpawnHintText(center + new Vector3(room.Width * 0.45f, 2.8f, -2f), "II", 0.5f);
+            SpawnHintText(center + new Vector3(0, 2.8f, -room.Depth * 0.45f), "III", 0.5f);
+
+            // Hint on north wall
+            SpawnHintText(center + new Vector3(0, 2.5f, room.Depth * 0.45f),
+                "The order: III - I - II", 0.4f);
+
+            Debug.Log("[DungeonManager] Switch sequence room spawned.");
+        }
+
+        // --- Room 6: Treasure + Blue Key ---
         private void SpawnTreasureRoomContent(RoomDef room)
         {
             Vector3 center = RoomCenter(room);
             SpawnRoomCornerTorches(center, room.Width, room.Depth);
-            SpawnDungeonChest(center);
+
+            // Dungeon chest (existing functionality)
+            SpawnDungeonChest(center + new Vector3(-2f, 0, 0));
+
+            // Blue key pickup on the other side
+            SpawnKeyPickup(center + new Vector3(3f, 0.8f, 0), "blue_key", "Blue Key",
+                new Color(0.3f, 0.5f, 1f));
+
+            Debug.Log("[DungeonManager] Treasure room: chest + blue key spawned.");
         }
 
-        private void SpawnBossRoomContent(RoomDef room)
+        // --- Room 7: Blue Key Door ---
+        private void SpawnBlueKeyDoorContent(RoomDef room)
         {
             Vector3 center = RoomCenter(room);
-            SpawnRoomCornerTorches(center, room.Width, room.Depth);
-            SpawnDungeonTorch(center + new Vector3(room.Width * 0.4f, 2f, 0));
-            SpawnDungeonTorch(center + new Vector3(-room.Width * 0.4f, 2f, 0));
 
-            SpawnDungeonEnemy(center + new Vector3(0, 0.5f, 0), "DungeonGuardian",
-                _skeletonMesh, new Color(0.6f, 0.15f, 0.15f), 200, 20, 2f, 18f, 25f, 1.8f, 150,
-                "sword_magic", 1, 1f, Vector3.one * 1.5f);
+            var gate = SpawnPuzzleDoor(room);
+
+            var keyDoorGo = new GameObject("KeyDoor_Blue");
+            keyDoorGo.transform.SetParent(_dungeonRoot.transform);
+            keyDoorGo.transform.position = center + new Vector3(0, 1f, 0);
+
+            var col = keyDoorGo.AddComponent<BoxCollider>();
+            col.size = new Vector3(CORRIDOR_WIDTH, 3.5f, 1f);
+            col.center = new Vector3(0, 0.75f, 0);
+
+            var keyDoor = keyDoorGo.AddComponent<KeyDoor>();
+            keyDoor.Init("blue_key", "Blue Key", gate);
+
+            SpawnColoredMarker(center + new Vector3(CORRIDOR_WIDTH * 0.4f, 2f, 0), new Color(0.3f, 0.5f, 1f));
+            SpawnColoredMarker(center + new Vector3(-CORRIDOR_WIDTH * 0.4f, 2f, 0), new Color(0.3f, 0.5f, 1f));
+
+            Debug.Log("[DungeonManager] Blue key door spawned.");
         }
 
+        // --- Room 8: Final Challenge — 2 push blocks + 2 plates + switch ---
+        private void SpawnFinalChallenge(RoomDef room)
+        {
+            Vector3 center = RoomCenter(room);
+
+            // Final door at south exit
+            var finalDoor = SpawnPuzzleDoor(room);
+
+            // Create a multi-condition tracker
+            var trackerGo = new GameObject("FinalPuzzleTracker");
+            trackerGo.transform.SetParent(_dungeonRoot.transform);
+            trackerGo.transform.position = center;
+            var tracker = trackerGo.AddComponent<FinalPuzzleTracker>();
+
+            // Plate 1 — left side
+            var plate1Go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            plate1Go.name = "FinalPlate_1";
+            plate1Go.transform.SetParent(_dungeonRoot.transform);
+            plate1Go.transform.position = center + new Vector3(-4f, 0.05f, -3f);
+            plate1Go.transform.localScale = new Vector3(2f, 0.1f, 2f);
+            var plate1 = plate1Go.AddComponent<PressurePlate>();
+            plate1.Init(null, stayDown: false); // No direct door link — tracker manages
+
+            // Plate 2 — right side
+            var plate2Go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            plate2Go.name = "FinalPlate_2";
+            plate2Go.transform.SetParent(_dungeonRoot.transform);
+            plate2Go.transform.position = center + new Vector3(4f, 0.05f, -3f);
+            plate2Go.transform.localScale = new Vector3(2f, 0.1f, 2f);
+            var plate2 = plate2Go.AddComponent<PressurePlate>();
+            plate2.Init(null, stayDown: false);
+
+            // Block 1 — left back
+            var block1Go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            block1Go.name = "FinalBlock_1";
+            block1Go.transform.SetParent(_dungeonRoot.transform);
+            block1Go.transform.position = center + new Vector3(-4f, 0.6f, 4f);
+            block1Go.transform.localScale = new Vector3(1.2f, 1.2f, 1.2f);
+            var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            block1Go.GetComponent<Renderer>().material = new Material(shader) { color = new Color(0.5f, 0.4f, 0.35f) };
+            var block1 = block1Go.AddComponent<PushableBlock>();
+            block1.Init();
+
+            // Block 2 — right back
+            var block2Go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            block2Go.name = "FinalBlock_2";
+            block2Go.transform.SetParent(_dungeonRoot.transform);
+            block2Go.transform.position = center + new Vector3(4f, 0.6f, 4f);
+            block2Go.transform.localScale = new Vector3(1.2f, 1.2f, 1.2f);
+            block2Go.GetComponent<Renderer>().material = new Material(shader) { color = new Color(0.5f, 0.4f, 0.35f) };
+            var block2 = block2Go.AddComponent<PushableBlock>();
+            block2.Init();
+
+            // Switch on back wall
+            var sw = SpawnWallSwitch(center + new Vector3(0, 1.5f, room.Depth * 0.45f),
+                null, null, 0);
+
+            // Initialize tracker
+            tracker.Init(plate1, plate2, sw, finalDoor);
+
+            // Hint
+            SpawnHintText(center + new Vector3(0, 2.5f, -room.Depth * 0.45f + 1f),
+                "Two stones, two plates, one switch.", 0.35f);
+
+            Debug.Log("[DungeonManager] Final challenge room spawned.");
+        }
+
+        // --- Room 9: Exit ---
         private void SpawnExitRoomContent(RoomDef room)
         {
             Vector3 center = RoomCenter(room);
             SpawnDungeonTorch(center + new Vector3(room.Width * 0.35f, 2f, 0));
             SpawnDungeonTorch(center + new Vector3(-room.Width * 0.35f, 2f, 0));
             SpawnExitPortal(center);
+        }
+
+        // ===================================================================
+        //  PUZZLE HELPER SPAWNERS
+        // ===================================================================
+
+        private PuzzleSwitch SpawnWallSwitch(Vector3 pos, PuzzleDoor door,
+            SwitchSequencePuzzle puzzle, int index)
+        {
+            var switchGo = new GameObject($"PuzzleSwitch_{index}");
+            switchGo.transform.SetParent(_dungeonRoot.transform);
+            switchGo.transform.position = pos;
+
+            // Base plate on wall
+            var basePlate = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            basePlate.transform.SetParent(switchGo.transform);
+            basePlate.transform.localPosition = Vector3.zero;
+            basePlate.transform.localScale = new Vector3(0.4f, 0.6f, 0.15f);
+            Object.Destroy(basePlate.GetComponent<Collider>());
+            var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            basePlate.GetComponent<Renderer>().material = new Material(shader) { color = new Color(0.35f, 0.3f, 0.25f) };
+
+            // Lever arm
+            var leverArm = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            leverArm.transform.SetParent(switchGo.transform);
+            leverArm.transform.localPosition = new Vector3(0, 0, 0.1f);
+            leverArm.transform.localScale = new Vector3(0.1f, 0.25f, 0.1f);
+            leverArm.transform.localRotation = Quaternion.Euler(-45f, 0, 0);
+            Object.Destroy(leverArm.GetComponent<Collider>());
+
+            // Add a collider to the parent for interaction
+            var col = switchGo.AddComponent<BoxCollider>();
+            col.size = new Vector3(0.6f, 0.8f, 0.4f);
+
+            var sw = switchGo.AddComponent<PuzzleSwitch>();
+            sw.Init(leverArm.transform, door, puzzle, index);
+
+            return sw;
+        }
+
+        private void SpawnKeyPickup(Vector3 pos, string keyItemId, string keyName, Color keyColor)
+        {
+            var keyGo = new GameObject($"PuzzleKey_{keyItemId}");
+            keyGo.transform.SetParent(_dungeonRoot.transform);
+            keyGo.transform.position = pos;
+
+            // Pedestal
+            var pedestal = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            pedestal.transform.SetParent(keyGo.transform);
+            pedestal.transform.localPosition = new Vector3(0, -0.3f, 0);
+            pedestal.transform.localScale = new Vector3(0.5f, 0.3f, 0.5f);
+            Object.Destroy(pedestal.GetComponent<Collider>());
+            pedestal.GetComponent<Renderer>().material = _wallMat;
+
+            // Key visual — body
+            var keyVisual = new GameObject("KeyVisual");
+            keyVisual.transform.SetParent(keyGo.transform);
+            keyVisual.transform.localPosition = Vector3.zero;
+
+            var keyBody = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            keyBody.transform.SetParent(keyVisual.transform);
+            keyBody.transform.localPosition = new Vector3(0, 0, 0);
+            keyBody.transform.localScale = new Vector3(0.12f, 0.45f, 0.06f);
+            Object.Destroy(keyBody.GetComponent<Collider>());
+            var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            var keyMat = new Material(shader) { color = keyColor };
+            keyMat.SetFloat("_Smoothness", 0.7f);
+            keyBody.GetComponent<Renderer>().material = keyMat;
+
+            // Key handle (ring)
+            var keyHandle = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            keyHandle.transform.SetParent(keyVisual.transform);
+            keyHandle.transform.localPosition = new Vector3(0, 0.3f, 0);
+            keyHandle.transform.localScale = new Vector3(0.2f, 0.04f, 0.2f);
+            Object.Destroy(keyHandle.GetComponent<Collider>());
+            keyHandle.GetComponent<Renderer>().material = keyMat;
+
+            // Glow light
+            var glow = keyGo.AddComponent<Light>();
+            glow.type = LightType.Point;
+            glow.color = keyColor;
+            glow.intensity = 2f;
+            glow.range = 4f;
+
+            // Collider for interaction
+            var col = keyGo.AddComponent<BoxCollider>();
+            col.size = new Vector3(0.5f, 0.8f, 0.5f);
+            col.center = new Vector3(0, 0, 0);
+
+            var key = keyGo.AddComponent<PuzzleKey>();
+            key.Init(keyItemId, keyName, keyColor, keyVisual);
+
+            // Slow rotation
+            keyGo.AddComponent<SlowSpin>();
+        }
+
+        private void SpawnHintText(Vector3 pos, string text, float scale)
+        {
+            var hintGo = new GameObject($"Hint_{text.Substring(0, Mathf.Min(10, text.Length))}");
+            hintGo.transform.SetParent(_dungeonRoot.transform);
+            hintGo.transform.position = pos;
+
+            var hint = hintGo.AddComponent<HintLabel>();
+            hint.Text = text;
+            hint.DisplayRange = 8f;
+        }
+
+        private void SpawnColoredMarker(Vector3 pos, Color color)
+        {
+            var marker = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            marker.transform.SetParent(_dungeonRoot.transform);
+            marker.transform.position = pos;
+            marker.transform.localScale = new Vector3(0.3f, 0.3f, 0.15f);
+            Object.Destroy(marker.GetComponent<Collider>());
+
+            var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            var mat = new Material(shader) { color = color };
+            mat.SetFloat("_Smoothness", 0.6f);
+            marker.GetComponent<Renderer>().material = mat;
+
+            // Small glow
+            var light = marker.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = color;
+            light.intensity = 1f;
+            light.range = 3f;
         }
 
         private void SpawnRoomCornerTorches(Vector3 center, float width, float depth)
@@ -628,72 +917,6 @@ namespace FantasyGame.Dungeon
         // ===================================================================
         //  ENTITY SPAWNING
         // ===================================================================
-
-        private void SpawnDungeonEnemy(Vector3 pos, string name, Mesh mesh, Color color,
-            int hp, int dmg, float speed, float detectRange, float chaseRange,
-            float attackCooldown, int xpReward, string lootId, int lootCount,
-            float lootChance, Vector3 scale)
-        {
-            var enemyGo = new GameObject($"DEnemy_{name}_{Random.Range(0, 9999)}");
-            enemyGo.transform.SetParent(_dungeonRoot.transform);
-            enemyGo.transform.position = pos;
-
-            var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
-            Material mat;
-
-            if (mesh != null)
-            {
-                var mf = enemyGo.AddComponent<MeshFilter>();
-                mf.sharedMesh = mesh;
-                var mr = enemyGo.AddComponent<MeshRenderer>();
-                mat = new Material(shader) { color = color };
-                mr.material = mat;
-                enemyGo.transform.localScale = scale;
-            }
-            else
-            {
-                var capsule = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-                capsule.transform.SetParent(enemyGo.transform);
-                capsule.transform.localPosition = new Vector3(0, 0.75f, 0);
-                capsule.transform.localScale = scale;
-                mat = new Material(shader) { color = color };
-                capsule.GetComponent<Renderer>().material = mat;
-                var col = capsule.GetComponent<Collider>();
-                if (col != null) Destroy(col);
-            }
-
-            var capsuleCol = enemyGo.AddComponent<CapsuleCollider>();
-            capsuleCol.height = 1.6f;
-            capsuleCol.radius = 0.4f;
-            capsuleCol.center = new Vector3(0, 0.8f, 0);
-
-            var enemy = enemyGo.AddComponent<EnemyBase>();
-            enemy.EnemyName = name;
-            enemy.MaxHealth = hp;
-            enemy.AttackDamage = dmg;
-            enemy.AttackRange = 2f;
-            enemy.AttackCooldown = attackCooldown;
-            enemy.MoveSpeed = speed;
-            enemy.DetectRange = detectRange;
-            enemy.ChaseRange = chaseRange;
-            enemy.XPReward = xpReward;
-            enemy.LootId = lootId;
-            enemy.LootCount = lootCount;
-            enemy.LootChance = lootChance;
-
-            enemy.Init(mat);
-
-            var ai = enemyGo.AddComponent<EnemyAI>();
-            ai.Init(enemy);
-
-            var hpBar = enemyGo.AddComponent<EnemyHealthBar>();
-            hpBar.Init(enemy);
-
-            _dungeonEnemies.Add(enemy);
-            enemy.OnDeath += (e) => _dungeonEnemies.Remove(e);
-
-            Debug.Log($"[DungeonManager] Spawned {name} at {pos}");
-        }
 
         private void SpawnDungeonChest(Vector3 pos)
         {
@@ -845,12 +1068,16 @@ namespace FantasyGame.Dungeon
 
         private void ToggleOverworld(bool enabled)
         {
-            var spawner = FindAnyObjectByType<EnemySpawner>();
+            var spawner = FindAnyObjectByType<Enemies.EnemySpawner>();
             if (spawner != null) spawner.enabled = enabled;
             var dayNight = FindAnyObjectByType<DayNightCycle>();
             if (dayNight != null) dayNight.enabled = enabled;
         }
     }
+
+    // ===================================================================
+    //  HELPER COMPONENTS
+    // ===================================================================
 
     /// <summary>
     /// Special chest for dungeon with guaranteed good loot.
@@ -900,6 +1127,105 @@ namespace FantasyGame.Dungeon
                 _lid.localRotation = Quaternion.Euler(_openAngle, 0, 0);
                 if (_openAngle < -105f)
                     _opening = false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Slow Y-axis rotation for key pickups.
+    /// </summary>
+    public class SlowSpin : MonoBehaviour
+    {
+        private void Update()
+        {
+            transform.Rotate(0, 45f * Time.deltaTime, 0);
+        }
+    }
+
+    /// <summary>
+    /// World-space hint label that shows text when player is nearby.
+    /// Uses IMGUI for rendering.
+    /// </summary>
+    public class HintLabel : MonoBehaviour
+    {
+        public string Text = "";
+        public float DisplayRange = 8f;
+
+        private Transform _player;
+
+        private void Update()
+        {
+            if (_player == null)
+            {
+                var controller = FindAnyObjectByType<Player.ThirdPersonController>();
+                if (controller != null) _player = controller.transform;
+            }
+        }
+
+        private void OnGUI()
+        {
+            if (_player == null || string.IsNullOrEmpty(Text)) return;
+
+            float dist = Vector3.Distance(transform.position, _player.position);
+            if (dist > DisplayRange) return;
+
+            var cam = UnityEngine.Camera.main;
+            if (cam == null) return;
+
+            Vector3 screenPos = cam.WorldToScreenPoint(transform.position);
+            if (screenPos.z < 0) return;
+
+            float alpha = Mathf.Clamp01(1f - (dist / DisplayRange));
+            float scale = Screen.height / 1080f;
+
+            var style = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = Mathf.RoundToInt(14 * scale),
+                fontStyle = FontStyle.Italic,
+                alignment = TextAnchor.MiddleCenter
+            };
+            style.normal.textColor = new Color(0.9f, 0.85f, 0.6f, alpha * 0.9f);
+
+            float x = screenPos.x;
+            float y = Screen.height - screenPos.y;
+            GUI.Label(new Rect(x - 150, y - 15, 300, 30), Text, style);
+        }
+    }
+
+    /// <summary>
+    /// Tracks multiple puzzle conditions for the final room.
+    /// Door opens only when both plates are pressed AND switch is on.
+    /// </summary>
+    public class FinalPuzzleTracker : MonoBehaviour
+    {
+        private PressurePlate _plate1, _plate2;
+        private PuzzleSwitch _switch;
+        private PuzzleDoor _door;
+        private bool _doorOpened;
+
+        public void Init(PressurePlate plate1, PressurePlate plate2,
+            PuzzleSwitch sw, PuzzleDoor door)
+        {
+            _plate1 = plate1;
+            _plate2 = plate2;
+            _switch = sw;
+            _door = door;
+        }
+
+        private void Update()
+        {
+            if (_doorOpened || _door == null) return;
+
+            bool allConditionsMet = _plate1 != null && _plate1.IsPressed
+                && _plate2 != null && _plate2.IsPressed
+                && _switch != null && _switch.IsOn;
+
+            if (allConditionsMet)
+            {
+                _door.Open();
+                _door.Lock();
+                _doorOpened = true;
+                Debug.Log("[FinalPuzzleTracker] All conditions met! Door opened!");
             }
         }
     }
