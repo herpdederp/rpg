@@ -280,7 +280,7 @@ namespace FantasyGame.Dungeon
             // Y offsets are relative to entrance terrain height
             var rooms = new RoomDef[]
             {
-                new RoomDef { Name = "Entry",     ZOffset = -7f,   YOffset = -3f,   Width = 12, Depth = 10, DoorNorth = false, DoorSouth = true },
+                new RoomDef { Name = "Entry",     ZOffset = -7f,   YOffset = -3f,   Width = 12, Depth = 10, DoorNorth = true, DoorSouth = true },
                 new RoomDef { Name = "Corr1",     ZOffset = -15f,  YOffset = -4f,   Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
                 new RoomDef { Name = "Combat1",   ZOffset = -24f,  YOffset = -5f,   Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true },
                 new RoomDef { Name = "Corr2",     ZOffset = -33f,  YOffset = -6f,   Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
@@ -300,9 +300,11 @@ namespace FantasyGame.Dungeon
             }
 
             // Ramp from entrance surface down to entry room
+            // Entry room north wall is at ZOffset + Depth/2 = -7 + 5 = -2
+            // Entry room floor is at YOffset = -3
             BuildRamp(
-                _entrancePos + new Vector3(0, 0f, -1f),       // top: at entrance, ground level
-                _entrancePos + new Vector3(0, -3f, -4f)        // bottom: entry room floor
+                _entrancePos + new Vector3(0, 0f, -0.5f),     // top: just past entrance arch
+                _entrancePos + new Vector3(0, -3f, -2f)       // bottom: entry room north doorway
             );
 
             // Spawn content
