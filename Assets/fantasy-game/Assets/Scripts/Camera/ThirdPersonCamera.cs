@@ -6,6 +6,7 @@
 
 using UnityEngine;
 using UnityEngine.InputSystem;
+using FantasyGame.UI;
 
 namespace FantasyGame.Camera
 {
@@ -56,9 +57,9 @@ namespace FantasyGame.Camera
             if (target == null) return;
 
             var mouse = Mouse.current;
-            if (mouse != null)
+            if (mouse != null && !InventoryUI.IsOpen)
             {
-                // --- Input ---
+                // --- Input (blocked when inventory is open) ---
                 Vector2 delta = mouse.delta.ReadValue();
                 _yaw += delta.x * mouseSensitivity * 0.1f;
                 _pitch -= delta.y * mouseSensitivity * 0.1f;

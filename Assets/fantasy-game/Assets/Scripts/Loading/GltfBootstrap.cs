@@ -433,6 +433,11 @@ namespace FantasyGame.Loading
             var hud = hudGo.AddComponent<GameHUD>();
             hud.Init(statsComp.Stats);
 
+            // --- Inventory UI (Tab to toggle) ---
+            var invUIGo = new GameObject("InventoryUI");
+            var invUI = invUIGo.AddComponent<InventoryUI>();
+            invUI.Init(inventoryComp.Inventory, statsComp.Stats, characterRoot.transform);
+
             // --- Stat point input (1=STR, 2=DEX, 3=VIT) ---
             var statInput = characterRoot.AddComponent<StatPointInput>();
             statInput.Init(statsComp.Stats);
@@ -441,7 +446,7 @@ namespace FantasyGame.Loading
             var potionInput = characterRoot.AddComponent<PotionInput>();
             potionInput.Init(inventoryComp.Inventory, statsComp.Stats);
 
-            Debug.Log("[GltfBootstrap] RPG systems initialized: Stats, Inventory, Combat, HUD");
+            Debug.Log("[GltfBootstrap] RPG systems initialized: Stats, Inventory, Combat, HUD, InventoryUI");
         }
 
         private Transform AttachSwordToHand(GameObject characterRoot)

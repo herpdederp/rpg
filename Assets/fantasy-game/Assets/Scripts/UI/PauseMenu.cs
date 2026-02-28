@@ -29,6 +29,9 @@ namespace FantasyGame.UI
             var kb = Keyboard.current;
             if (kb != null && kb.escapeKey.wasPressedThisFrame)
             {
+                // Don't open pause menu if inventory is open (ESC closes inventory first)
+                if (InventoryUI.IsOpen) return;
+
                 if (_showControls)
                 {
                     _showControls = false;

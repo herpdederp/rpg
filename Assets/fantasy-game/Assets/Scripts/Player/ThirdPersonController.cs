@@ -6,6 +6,7 @@
 
 using UnityEngine;
 using UnityEngine.InputSystem;
+using FantasyGame.UI;
 
 namespace FantasyGame.Player
 {
@@ -73,6 +74,9 @@ namespace FantasyGame.Player
 
             CacheCamera();
 
+            // --- Block input when UI is open ---
+            bool inputBlocked = UI.InventoryUI.IsOpen || UI.PauseMenu.IsPaused;
+
             // --- Ground check (CC check + raycast fallback for uneven terrain) ---
             // Grace period: force grounded for first frames to let CC settle onto terrain
             if (_graceFrames > 0)
@@ -110,7 +114,7 @@ namespace FantasyGame.Player
             float speed = 0f;
 
             var keyboard = Keyboard.current;
-            if (keyboard != null)
+            if (keyboard != null && !inputBlocked)
             {
                 float h = 0f;
                 float v = 0f;

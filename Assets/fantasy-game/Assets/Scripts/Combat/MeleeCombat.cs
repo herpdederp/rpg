@@ -6,6 +6,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using FantasyGame.RPG;
+using FantasyGame.UI;
 
 namespace FantasyGame.Combat
 {
@@ -23,6 +24,7 @@ namespace FantasyGame.Combat
         public float AttackTimer { get; private set; }
 
         private PlayerStatsComponent _statsComponent;
+        private InventoryComponent _inventoryComponent;
         private float _cooldownTimer;
         private Transform _swordTransform;
 
@@ -34,6 +36,7 @@ namespace FantasyGame.Combat
         {
             _statsComponent = stats;
             _swordTransform = swordMount;
+            _inventoryComponent = GetComponent<InventoryComponent>();
         }
 
         private void Update()
@@ -61,7 +64,8 @@ namespace FantasyGame.Combat
                 }
             }
 
-            // Input
+            // Input (blocked when inventory or pause menu is open)
+            if (InventoryUI.IsOpen || PauseMenu.IsPaused) return;
             var mouse = Mouse.current;
             if (mouse != null && mouse.leftButton.wasPressedThisFrame)
             {
@@ -91,7 +95,14 @@ namespace FantasyGame.Combat
 
         private void PerformHitDetection()
         {
+            // Base damage from stats (5 + STR * 2)
             float damage = _statsComponent != null ? _statsComponent.Stats.AttackDamage : 10f;
+
+            // Add equipped weapon damage bonus
+            if (_inventoryComponent != null && _inventoryComponent.Inventory.EquippedWeapon != null)
+            {
+                damage += _inventoryComponent.Inventory.EquippedWeapon.Value;
+            }
 
             // Overlap sphere to find enemies in range
             Collider[] hits = Physics.OverlapSphere(transform.position + transform.forward * 1.0f, ATTACK_RANGE);
@@ -113,7 +124,7 @@ namespace FantasyGame.Combat
                 {
                     damageable.TakeDamage(Mathf.RoundToInt(damage), transform.position);
                     hitSomething = true;
-                    Debug.Log($"[MeleeCombat] Hit {hit.name} for {damage:F0} damage!");
+                    Debug.Log($"[MeleeCombat] Hit {hit.name} for {damage:F0} damage (weapon bonus: {(_inventoryComponent?.Inventory.EquippedWeapon?.Value ?? 0)})!");
                 }
             }
 
