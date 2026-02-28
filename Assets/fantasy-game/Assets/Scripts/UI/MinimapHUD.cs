@@ -8,6 +8,7 @@ using UnityEngine;
 using System.Collections.Generic;
 using FantasyGame.Enemies;
 using FantasyGame.Interaction;
+using FantasyGame.Dungeon;
 
 namespace FantasyGame.UI
 {
@@ -191,7 +192,9 @@ namespace FantasyGame.UI
             }
 
             // Draw village marker (green house icon on minimap edge if far away)
-            DrawVillageMarker(mapRect, playerPos, scale);
+            // Hide when in dungeon — village marker is irrelevant underground
+            if (!DungeonManager.IsInDungeon)
+                DrawVillageMarker(mapRect, playerPos, scale);
 
             // Draw player (white triangle pointing forward)
             DrawPlayerArrow(mapRect, playerAngle, scale);
@@ -202,7 +205,8 @@ namespace FantasyGame.UI
             GUI.color = Color.white;
 
             // Draw directional hint to village if not discovered yet
-            if (!_villageDiscovered)
+            // Hide when in dungeon
+            if (!_villageDiscovered && !DungeonManager.IsInDungeon)
             {
                 DrawVillageHint(playerPos, scale);
             }

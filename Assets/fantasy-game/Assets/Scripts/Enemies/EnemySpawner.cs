@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using FantasyGame.RPG;
 using FantasyGame.Utils;
+using FantasyGame.Dungeon;
 
 namespace FantasyGame.Enemies
 {
@@ -157,6 +158,9 @@ namespace FantasyGame.Enemies
         private void Update()
         {
             if (_player == null) return;
+
+            // Don't spawn overworld enemies while player is in the dungeon
+            if (DungeonManager.IsInDungeon) return;
 
             _spawnTimer -= Time.deltaTime;
 

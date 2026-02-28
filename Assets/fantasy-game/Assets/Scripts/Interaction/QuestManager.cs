@@ -91,6 +91,19 @@ namespace FantasyGame.Interaction
                 ItemReward = "sword_magic",
                 ItemRewardCount = 1
             });
+
+            AddQuest(new Quest
+            {
+                Id = "clear_dungeon",
+                Title = "Dungeon Guardian",
+                Description = "Defeat the Dungeon Guardian in the cave northeast of the village.",
+                Type = QuestType.KillEnemies,
+                TargetId = "DungeonGuardian",
+                TargetCount = 1,
+                XPReward = 200,
+                ItemReward = "potion_large",
+                ItemRewardCount = 5
+            });
         }
 
         private void AddQuest(Quest q)

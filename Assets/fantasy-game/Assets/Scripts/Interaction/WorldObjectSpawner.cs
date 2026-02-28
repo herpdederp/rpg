@@ -171,6 +171,26 @@ namespace FantasyGame.Interaction
             SpawnTrainingDummy(new Vector3(74f, 0, 78f));
             SpawnTrainingDummy(new Vector3(74f, 0, 82f));
 
+            // --- Captain Aldric (dungeon quest giver, near village center) ---
+            SpawnNPC(
+                new Vector3(78f, 0, 80f),
+                "Captain Aldric",
+                new DialogueLine[]
+                {
+                    new DialogueLine("Captain Aldric", "Hail, adventurer. I guard this outpost, but a greater threat lurks nearby."),
+                    new DialogueLine("Captain Aldric", "Northeast of here, a cave leads into the old dungeon beneath the highlands."),
+                    new DialogueLine("Captain Aldric", "A powerful Guardian has made its lair in the deepest chamber."),
+                    new DialogueLine("Captain Aldric", "Defeat it, and I'll reward you handsomely."),
+                },
+                new DialogueLine[]
+                {
+                    new DialogueLine("Captain Aldric", "You defeated the Dungeon Guardian? Incredible!"),
+                    new DialogueLine("Captain Aldric", "The highlands are safer with that beast gone. Take these potions — you've earned them."),
+                },
+                "clear_dungeon",
+                0 // Villager mesh
+            );
+
             Debug.Log("[WorldObjectSpawner] Fixed world objects placed (including village plateau).");
         }
 

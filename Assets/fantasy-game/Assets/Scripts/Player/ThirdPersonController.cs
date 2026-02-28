@@ -7,6 +7,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using FantasyGame.UI;
+using FantasyGame.Dungeon;
 
 namespace FantasyGame.Player
 {
@@ -102,7 +103,8 @@ namespace FantasyGame.Player
             {
                 _fallTimer += Time.deltaTime;
                 // Safety: if falling for too long, teleport back to terrain surface
-                if (_fallTimer > 3f)
+                // Skip in dungeon — player walks down a ramp below terrain level
+                if (_fallTimer > 3f && !DungeonManager.IsInDungeon)
                 {
                     TeleportToGround();
                     return;

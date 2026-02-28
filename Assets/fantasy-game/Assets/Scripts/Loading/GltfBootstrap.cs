@@ -21,6 +21,7 @@ using FantasyGame.Interaction;
 using FantasyGame.Audio;
 using FantasyGame.VFX;
 using FantasyGame.Utils;
+using FantasyGame.Dungeon;
 
 namespace FantasyGame.Loading
 {
@@ -37,6 +38,7 @@ namespace FantasyGame.Loading
         private const string PROPS_FILENAME = "props.glb";
         private const string ITEMS_FILENAME = "items.glb";
         private const string BUILDINGS_FILENAME = "buildings.glb";
+        private const string DUNGEON_FILENAME = "dungeon.glb";
         private const int WORLD_SEED = 12345;
 
         private WorldManager _worldManager;
@@ -48,6 +50,7 @@ namespace FantasyGame.Loading
         private Mesh[] _propMeshes;
         private Mesh[] _itemMeshes;
         private Mesh[] _buildingMeshes;
+        private Mesh[] _dungeonMeshes;
         private EnemySpawner _enemySpawner;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -106,7 +109,8 @@ namespace FantasyGame.Loading
             _propMeshes = await LoadMeshesFromGlb(PROPS_FILENAME);
             _itemMeshes = await LoadMeshesFromGlb(ITEMS_FILENAME);
             _buildingMeshes = await LoadMeshesFromGlb(BUILDINGS_FILENAME);
-            Debug.Log($"[GltfBootstrap] World meshes: npcs={_npcMeshes.Length}, props={_propMeshes.Length}, items={_itemMeshes.Length}, buildings={_buildingMeshes.Length}");
+            _dungeonMeshes = await LoadMeshesFromGlb(DUNGEON_FILENAME);
+            Debug.Log($"[GltfBootstrap] World meshes: npcs={_npcMeshes.Length}, props={_propMeshes.Length}, items={_itemMeshes.Length}, buildings={_buildingMeshes.Length}, dungeon={_dungeonMeshes.Length}");
 
             // --- Register flat zones (must happen before any terrain generation) ---
             NoiseUtils.RegisterFlatZone(80f, 80f, 16f, 12f, 12f); // Village plateau
@@ -543,7 +547,13 @@ namespace FantasyGame.Loading
             var worldSpawner = spawnerGo.AddComponent<WorldObjectSpawner>();
             worldSpawner.Init(characterRoot.transform, questMgr, WORLD_SEED, _npcMeshes, _propMeshes, _itemMeshes, _buildingMeshes);
 
-            Debug.Log("[GltfBootstrap] Phase 4: World Interaction initialized (quests, NPCs, chests, day/night).");
+            // --- Dungeon Manager ---
+            var dungeonGo = new GameObject("DungeonManager");
+            var dungeonMgr = dungeonGo.AddComponent<DungeonManager>();
+            dungeonMgr.Init(characterRoot.transform, questMgr, WORLD_SEED,
+                _dungeonMeshes, _slimeMesh, _skeletonMesh, _wolfMesh);
+
+            Debug.Log("[GltfBootstrap] Phase 4: World Interaction initialized (quests, NPCs, chests, day/night, dungeon).");
         }
 
         private void SetupPolishSystems(GameObject characterRoot)

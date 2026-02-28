@@ -1,0 +1,848 @@
+// Assets/Scripts/Dungeon/DungeonManager.cs
+// ===========================================
+// Core dungeon orchestrator. Generates rooms at the cave entrance location,
+// manages lighting, spawns enemies/torches/chest/boss/exit, and handles
+// enter/exit transitions. Rooms are built below terrain surface extending
+// in -Z from the entrance.
+
+using System.Collections.Generic;
+using UnityEngine;
+using FantasyGame.Enemies;
+using FantasyGame.RPG;
+using FantasyGame.Interaction;
+using FantasyGame.Utils;
+using FantasyGame.World;
+
+namespace FantasyGame.Dungeon
+{
+    public class DungeonManager : MonoBehaviour
+    {
+        public static bool IsInDungeon { get; private set; }
+        public static DungeonManager Instance { get; private set; }
+
+        // Entrance location on overworld
+        private const float ENTRANCE_X = 140f;
+        private const float ENTRANCE_Z = 130f;
+
+        // Room geometry
+        private const float ROOM_HEIGHT = 5f;
+        private const float WALL_THICKNESS = 0.5f;
+        private const float CORRIDOR_WIDTH = 4f;
+
+        // References
+        private Transform _player;
+        private QuestManager _questMgr;
+        private int _seed;
+        private Mesh[] _dungeonMeshes;  // [0]=CaveEntrance, [1]=TorchSconce, [2]=ExitPortal
+        private Mesh _slimeMesh, _skeletonMesh, _wolfMesh;
+
+        // Runtime
+        private GameObject _dungeonRoot;
+        private GameObject _entranceGo;
+        private Vector3 _entrancePos;
+        private List<EnemyBase> _dungeonEnemies = new List<EnemyBase>();
+
+        // Saved overworld state
+        private Vector3 _savedPlayerPos;
+        private Quaternion _savedPlayerRot;
+        private float _savedFogStart, _savedFogEnd;
+        private Color _savedFogColor, _savedAmbient;
+        private float _savedSunIntensity;
+        private Light _sunLight;
+
+        // Shared dungeon materials
+        private Material _floorMat, _wallMat, _ceilingMat;
+        private Material _vcMaterial;
+
+        // Room definitions
+        private struct RoomDef
+        {
+            public string Name;
+            public float ZOffset, YOffset;
+            public float Width, Depth;
+            public bool DoorNorth, DoorSouth;
+        }
+
+        public void Init(Transform player, QuestManager questMgr, int seed,
+            Mesh[] dungeonMeshes, Mesh slimeMesh, Mesh skeletonMesh, Mesh wolfMesh)
+        {
+            Instance = this;
+            _player = player;
+            _questMgr = questMgr;
+            _seed = seed;
+            _dungeonMeshes = dungeonMeshes ?? new Mesh[0];
+            _slimeMesh = slimeMesh;
+            _skeletonMesh = skeletonMesh;
+            _wolfMesh = wolfMesh;
+
+            // Create shared materials
+            var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            _floorMat = new Material(shader) { color = new Color(0.20f, 0.18f, 0.16f) };
+            _floorMat.SetFloat("_Smoothness", 0.1f);
+            _wallMat = new Material(shader) { color = new Color(0.25f, 0.22f, 0.20f) };
+            _wallMat.SetFloat("_Smoothness", 0.1f);
+            _ceilingMat = new Material(shader) { color = new Color(0.15f, 0.13f, 0.12f) };
+            _ceilingMat.SetFloat("_Smoothness", 0.1f);
+
+            // VC material for Blender meshes
+            var vcShader = Shader.Find("FantasyGame/PainterlyLit") ?? shader;
+            _vcMaterial = new Material(vcShader);
+            _vcMaterial.SetColor("_BaseColor", Color.white);
+
+            // Find the sun light
+            foreach (var light in FindObjectsByType<Light>(FindObjectsSortMode.None))
+            {
+                if (light.type == LightType.Directional)
+                {
+                    _sunLight = light;
+                    break;
+                }
+            }
+
+            // Register a small flat zone at the entrance
+            NoiseUtils.RegisterFlatZone(ENTRANCE_X, ENTRANCE_Z, 6f, 4f,
+                NoiseUtils.SampleHeight(ENTRANCE_X, ENTRANCE_Z, seed));
+
+            // Spawn the entrance on the overworld (always visible)
+            SpawnEntranceOnOverworld();
+
+            Debug.Log("[DungeonManager] Initialized. Entrance at " +
+                $"({ENTRANCE_X}, {ENTRANCE_Z}).");
+        }
+
+        private void SpawnEntranceOnOverworld()
+        {
+            float terrainY = NoiseUtils.SampleHeight(ENTRANCE_X, ENTRANCE_Z, _seed);
+            _entrancePos = new Vector3(ENTRANCE_X, terrainY, ENTRANCE_Z);
+
+            _entranceGo = new GameObject("DungeonEntrance_Overworld");
+            _entranceGo.transform.position = _entrancePos;
+
+            // Attach the cave entrance arch mesh
+            if (_dungeonMeshes.Length > 0 && _dungeonMeshes[0] != null)
+            {
+                var meshGo = new GameObject("EntranceMesh");
+                meshGo.transform.SetParent(_entranceGo.transform);
+                meshGo.transform.localPosition = Vector3.zero;
+                meshGo.transform.localScale = Vector3.one;
+                var mf = meshGo.AddComponent<MeshFilter>();
+                mf.sharedMesh = _dungeonMeshes[0];
+                var mr = meshGo.AddComponent<MeshRenderer>();
+                mr.sharedMaterial = new Material(_vcMaterial);
+                Debug.Log($"[DungeonManager] Entrance mesh attached: {_dungeonMeshes[0].vertexCount} verts");
+            }
+            else
+            {
+                // Fallback: two stone pillars + lintel
+                CreateFallbackEntrance(_entranceGo);
+            }
+
+            // Collider so player can't walk through the arch frame
+            var col = _entranceGo.AddComponent<BoxCollider>();
+            col.center = new Vector3(0, 1.5f, 0);
+            col.size = new Vector3(0.5f, 3f, 0.8f);
+            col.isTrigger = true; // Don't block, just detect
+
+            // Interactable component
+            var entrance = _entranceGo.AddComponent<DungeonEntrance>();
+            entrance.Init();
+
+            // Flanking torches
+            SpawnOverworldTorch(_entrancePos + new Vector3(-2f, 0, 0));
+            SpawnOverworldTorch(_entrancePos + new Vector3(2f, 0, 0));
+        }
+
+        private void CreateFallbackEntrance(GameObject parent)
+        {
+            // Left pillar
+            var pillarL = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            pillarL.transform.SetParent(parent.transform);
+            pillarL.transform.localPosition = new Vector3(-1.3f, 1.5f, 0);
+            pillarL.transform.localScale = new Vector3(0.6f, 3f, 0.6f);
+            pillarL.GetComponent<Renderer>().material = _wallMat;
+            Object.Destroy(pillarL.GetComponent<Collider>());
+
+            // Right pillar
+            var pillarR = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            pillarR.transform.SetParent(parent.transform);
+            pillarR.transform.localPosition = new Vector3(1.3f, 1.5f, 0);
+            pillarR.transform.localScale = new Vector3(0.6f, 3f, 0.6f);
+            pillarR.GetComponent<Renderer>().material = _wallMat;
+            Object.Destroy(pillarR.GetComponent<Collider>());
+
+            // Lintel
+            var lintel = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            lintel.transform.SetParent(parent.transform);
+            lintel.transform.localPosition = new Vector3(0, 3.2f, 0);
+            lintel.transform.localScale = new Vector3(3.2f, 0.5f, 0.6f);
+            lintel.GetComponent<Renderer>().material = _wallMat;
+            Object.Destroy(lintel.GetComponent<Collider>());
+        }
+
+        private void SpawnOverworldTorch(Vector3 pos)
+        {
+            var torchGo = new GameObject("EntranceTorch");
+            torchGo.transform.position = pos;
+
+            // Simple torch post
+            var post = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            post.transform.SetParent(torchGo.transform);
+            post.transform.localPosition = new Vector3(0, 0.75f, 0);
+            post.transform.localScale = new Vector3(0.08f, 0.75f, 0.08f);
+            var pr = post.GetComponent<Renderer>();
+            if (pr != null)
+            {
+                var mat = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
+                mat.color = new Color(0.3f, 0.2f, 0.1f);
+                pr.material = mat;
+            }
+            Object.Destroy(post.GetComponent<Collider>());
+
+            // Light
+            var light = torchGo.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = new Color(1f, 0.65f, 0.3f);
+            light.intensity = 1.5f;
+            light.range = 6f;
+            torchGo.transform.position = pos + Vector3.up * 1.5f;
+        }
+
+        // ===================================================================
+        //  ENTER / EXIT
+        // ===================================================================
+
+        public void EnterDungeon()
+        {
+            if (IsInDungeon) return;
+
+            Debug.Log("[DungeonManager] Entering dungeon...");
+
+            // Save overworld state
+            _savedPlayerPos = _player.position;
+            _savedPlayerRot = _player.rotation;
+            SaveLighting();
+
+            // Disable overworld systems
+            ToggleOverworld(false);
+
+            // Generate dungeon interior
+            GenerateDungeon();
+
+            // Apply dungeon lighting
+            ApplyDungeonLighting();
+
+            IsInDungeon = true;
+            Debug.Log("[DungeonManager] Dungeon generated and active.");
+        }
+
+        public void ExitDungeon()
+        {
+            if (!IsInDungeon) return;
+
+            Debug.Log("[DungeonManager] Exiting dungeon...");
+
+            // Teleport player back to entrance
+            var cc = _player.GetComponent<CharacterController>();
+            if (cc != null) cc.enabled = false;
+            _player.position = _entrancePos + Vector3.up * 0.5f + Vector3.forward * 2f;
+            _player.rotation = Quaternion.Euler(0, 180, 0); // Face away from entrance
+            if (cc != null) cc.enabled = true;
+            var tpc = _player.GetComponent<Player.ThirdPersonController>();
+            if (tpc != null) tpc.ResetAfterRespawn();
+
+            // Destroy dungeon interior
+            if (_dungeonRoot != null)
+            {
+                Destroy(_dungeonRoot);
+                _dungeonRoot = null;
+            }
+            _dungeonEnemies.Clear();
+
+            // Restore overworld
+            ToggleOverworld(true);
+            RestoreLighting();
+
+            IsInDungeon = false;
+            Debug.Log("[DungeonManager] Returned to overworld.");
+        }
+
+        // ===================================================================
+        //  DUNGEON GENERATION
+        // ===================================================================
+
+        private void GenerateDungeon()
+        {
+            _dungeonRoot = new GameObject("DungeonInterior");
+
+            // Room definitions (Z/Y offsets relative to entrance)
+            var rooms = new RoomDef[]
+            {
+                new RoomDef { Name = "Entry",     ZOffset = -5f,  YOffset = -2f,  Width = 12, Depth = 10, DoorNorth = false, DoorSouth = true },
+                new RoomDef { Name = "Corr1",     ZOffset = -13f, YOffset = -3f,  Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Combat1",   ZOffset = -21f, YOffset = -4f,  Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Corr2",     ZOffset = -30f, YOffset = -5f,  Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Combat2",   ZOffset = -38f, YOffset = -6f,  Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Corr3",     ZOffset = -47f, YOffset = -7f,  Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Treasure",  ZOffset = -55f, YOffset = -8f,  Width = 10, Depth = 10, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Corr4",     ZOffset = -62f, YOffset = -9f,  Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Boss",      ZOffset = -72f, YOffset = -10f, Width = 16, Depth = 16, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Exit",      ZOffset = -88f, YOffset = -10f, Width = 6,  Depth = 6,  DoorNorth = true, DoorSouth = false },
+            };
+
+            // Build each room
+            foreach (var room in rooms)
+            {
+                Vector3 center = _entrancePos + new Vector3(0, room.YOffset, room.ZOffset);
+                BuildRoom(center, room.Width, room.Depth, ROOM_HEIGHT, room.DoorNorth, room.DoorSouth);
+            }
+
+            // Entry ramp (connects entrance surface to entry room floor)
+            BuildRamp(
+                _entrancePos + new Vector3(0, -0.1f, -0.5f),
+                _entrancePos + new Vector3(0, -2f, -5f + 5f) // top of entry room
+            );
+
+            // Spawn content
+            SpawnEntryRoomContent(rooms[0]);
+            SpawnCombatRoom1Content(rooms[2]);
+            SpawnCombatRoom2Content(rooms[4]);
+            SpawnTreasureRoomContent(rooms[6]);
+            SpawnBossRoomContent(rooms[8]);
+            SpawnExitRoomContent(rooms[9]);
+
+            // Torches in corridors
+            foreach (var room in rooms)
+            {
+                if (room.Name.StartsWith("Corr"))
+                {
+                    Vector3 center = _entrancePos + new Vector3(0, room.YOffset, room.ZOffset);
+                    SpawnDungeonTorch(center + new Vector3(room.Width * 0.4f, 2f, 0));
+                }
+            }
+
+            // Ensure physics colliders are ready
+            Physics.SyncTransforms();
+
+            Debug.Log($"[DungeonManager] Generated {rooms.Length} rooms.");
+        }
+
+        // ===================================================================
+        //  ROOM BUILDING
+        // ===================================================================
+
+        private void BuildRoom(Vector3 center, float width, float depth, float height,
+            bool doorNorth, bool doorSouth)
+        {
+            // Floor
+            CreateWall(center + new Vector3(0, -WALL_THICKNESS * 0.5f, 0),
+                new Vector3(width, WALL_THICKNESS, depth), _floorMat);
+
+            // Ceiling
+            CreateWall(center + new Vector3(0, height + WALL_THICKNESS * 0.5f, 0),
+                new Vector3(width + 2f, WALL_THICKNESS, depth + 2f), _ceilingMat);
+
+            // North wall (+Z)
+            if (doorNorth)
+                BuildWallWithDoor(center, width, height, depth * 0.5f, true);
+            else
+                CreateWall(center + new Vector3(0, height * 0.5f, depth * 0.5f),
+                    new Vector3(width, height, WALL_THICKNESS), _wallMat);
+
+            // South wall (-Z)
+            if (doorSouth)
+                BuildWallWithDoor(center, width, height, -depth * 0.5f, false);
+            else
+                CreateWall(center + new Vector3(0, height * 0.5f, -depth * 0.5f),
+                    new Vector3(width, height, WALL_THICKNESS), _wallMat);
+
+            // East wall (+X)
+            CreateWall(center + new Vector3(width * 0.5f, height * 0.5f, 0),
+                new Vector3(WALL_THICKNESS, height, depth), _wallMat);
+
+            // West wall (-X)
+            CreateWall(center + new Vector3(-width * 0.5f, height * 0.5f, 0),
+                new Vector3(WALL_THICKNESS, height, depth), _wallMat);
+        }
+
+        private void BuildWallWithDoor(Vector3 roomCenter, float roomWidth, float height,
+            float zOffset, bool isNorth)
+        {
+            float halfWidth = roomWidth * 0.5f;
+            float halfDoor = CORRIDOR_WIDTH * 0.5f;
+            float doorHeight = 3.5f;
+
+            // Left segment
+            float leftW = halfWidth - halfDoor;
+            if (leftW > 0.1f)
+            {
+                CreateWall(
+                    roomCenter + new Vector3(-halfDoor - leftW * 0.5f, height * 0.5f, zOffset),
+                    new Vector3(leftW, height, WALL_THICKNESS), _wallMat);
+            }
+
+            // Right segment
+            float rightW = halfWidth - halfDoor;
+            if (rightW > 0.1f)
+            {
+                CreateWall(
+                    roomCenter + new Vector3(halfDoor + rightW * 0.5f, height * 0.5f, zOffset),
+                    new Vector3(rightW, height, WALL_THICKNESS), _wallMat);
+            }
+
+            // Lintel above door
+            float lintelHeight = height - doorHeight;
+            if (lintelHeight > 0.1f)
+            {
+                CreateWall(
+                    roomCenter + new Vector3(0, doorHeight + lintelHeight * 0.5f, zOffset),
+                    new Vector3(CORRIDOR_WIDTH, lintelHeight, WALL_THICKNESS), _wallMat);
+            }
+        }
+
+        private GameObject CreateWall(Vector3 position, Vector3 scale, Material mat)
+        {
+            var wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            wall.transform.SetParent(_dungeonRoot.transform);
+            wall.transform.position = position;
+            wall.transform.localScale = scale;
+            wall.GetComponent<Renderer>().material = mat;
+            wall.isStatic = true;
+            return wall;
+        }
+
+        private void BuildRamp(Vector3 topPos, Vector3 bottomPos)
+        {
+            // Ramp: a stretched cube rotated to connect top and bottom
+            Vector3 mid = (topPos + bottomPos) * 0.5f;
+            Vector3 dir = bottomPos - topPos;
+            float length = dir.magnitude;
+            float angle = Mathf.Atan2(dir.y, dir.z) * Mathf.Rad2Deg;
+
+            var ramp = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            ramp.transform.SetParent(_dungeonRoot.transform);
+            ramp.transform.position = mid;
+            ramp.transform.localScale = new Vector3(CORRIDOR_WIDTH, 0.3f, length);
+            ramp.transform.rotation = Quaternion.Euler(angle, 0, 0);
+            ramp.GetComponent<Renderer>().material = _floorMat;
+
+            // Side walls for the ramp
+            for (int side = -1; side <= 1; side += 2)
+            {
+                var sideWall = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                sideWall.transform.SetParent(_dungeonRoot.transform);
+                sideWall.transform.position = mid + new Vector3(side * (CORRIDOR_WIDTH * 0.5f + WALL_THICKNESS * 0.5f), 1.5f, 0);
+                sideWall.transform.localScale = new Vector3(WALL_THICKNESS, 4f, length + 1f);
+                sideWall.transform.rotation = Quaternion.Euler(0, 0, 0);
+                sideWall.GetComponent<Renderer>().material = _wallMat;
+            }
+
+            // Ceiling over ramp
+            var rampCeiling = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            rampCeiling.transform.SetParent(_dungeonRoot.transform);
+            rampCeiling.transform.position = mid + Vector3.up * 4f;
+            rampCeiling.transform.localScale = new Vector3(CORRIDOR_WIDTH + 2f, WALL_THICKNESS, length + 2f);
+            rampCeiling.GetComponent<Renderer>().material = _ceilingMat;
+        }
+
+        // ===================================================================
+        //  ROOM CONTENT SPAWNING
+        // ===================================================================
+
+        private void SpawnEntryRoomContent(RoomDef room)
+        {
+            Vector3 center = _entrancePos + new Vector3(0, room.YOffset, room.ZOffset);
+            // Torches on side walls
+            SpawnDungeonTorch(center + new Vector3(room.Width * 0.4f, 2f, room.Depth * 0.3f));
+            SpawnDungeonTorch(center + new Vector3(-room.Width * 0.4f, 2f, -room.Depth * 0.3f));
+        }
+
+        private void SpawnCombatRoom1Content(RoomDef room)
+        {
+            Vector3 center = _entrancePos + new Vector3(0, room.YOffset, room.ZOffset);
+
+            // 4 corner torches
+            SpawnRoomCornerTorches(center, room.Width, room.Depth);
+
+            // 3 Dungeon Slimes
+            SpawnDungeonEnemy(center + new Vector3(-3f, 0.5f, 0), "DungeonSlime",
+                _slimeMesh, new Color(0.2f, 0.6f, 0.2f), 40, 6, 2.5f, 12f, 18f, 1.5f, 25,
+                "slime_gel", 1, 0.6f, Vector3.one * 0.8f);
+            SpawnDungeonEnemy(center + new Vector3(3f, 0.5f, 2f), "DungeonSlime",
+                _slimeMesh, new Color(0.2f, 0.6f, 0.2f), 40, 6, 2.5f, 12f, 18f, 1.5f, 25,
+                "slime_gel", 1, 0.6f, Vector3.one * 0.8f);
+            SpawnDungeonEnemy(center + new Vector3(0, 0.5f, -3f), "DungeonSlime",
+                _slimeMesh, new Color(0.2f, 0.6f, 0.2f), 40, 6, 2.5f, 12f, 18f, 1.5f, 25,
+                "slime_gel", 1, 0.6f, Vector3.one * 0.8f);
+        }
+
+        private void SpawnCombatRoom2Content(RoomDef room)
+        {
+            Vector3 center = _entrancePos + new Vector3(0, room.YOffset, room.ZOffset);
+
+            SpawnRoomCornerTorches(center, room.Width, room.Depth);
+
+            // 2 Dungeon Skeletons
+            SpawnDungeonEnemy(center + new Vector3(-4f, 0.5f, 2f), "DungeonSkeleton",
+                _skeletonMesh, new Color(0.85f, 0.82f, 0.75f), 80, 15, 3f, 14f, 20f, 1.2f, 50,
+                "bone_fragment", 1, 0.7f, Vector3.one);
+            SpawnDungeonEnemy(center + new Vector3(4f, 0.5f, -2f), "DungeonSkeleton",
+                _skeletonMesh, new Color(0.85f, 0.82f, 0.75f), 80, 15, 3f, 14f, 20f, 1.2f, 50,
+                "bone_fragment", 1, 0.7f, Vector3.one);
+
+            // 1 Dungeon Wolf
+            SpawnDungeonEnemy(center + new Vector3(0, 0.5f, 0), "DungeonWolf",
+                _wolfMesh, new Color(0.4f, 0.35f, 0.3f), 60, 12, 5f, 16f, 22f, 1f, 40,
+                "wolf_pelt", 1, 0.6f, Vector3.one);
+        }
+
+        private void SpawnTreasureRoomContent(RoomDef room)
+        {
+            Vector3 center = _entrancePos + new Vector3(0, room.YOffset, room.ZOffset);
+
+            SpawnRoomCornerTorches(center, room.Width, room.Depth);
+
+            // Treasure chest in center
+            SpawnDungeonChest(center + new Vector3(0, 0, 0));
+        }
+
+        private void SpawnBossRoomContent(RoomDef room)
+        {
+            Vector3 center = _entrancePos + new Vector3(0, room.YOffset, room.ZOffset);
+
+            // 6 torches (4 corners + 2 mid-wall)
+            SpawnRoomCornerTorches(center, room.Width, room.Depth);
+            SpawnDungeonTorch(center + new Vector3(room.Width * 0.4f, 2f, 0));
+            SpawnDungeonTorch(center + new Vector3(-room.Width * 0.4f, 2f, 0));
+
+            // Dungeon Guardian (boss)
+            SpawnDungeonEnemy(center + new Vector3(0, 0.5f, 0), "DungeonGuardian",
+                _skeletonMesh, new Color(0.6f, 0.15f, 0.15f), 200, 20, 2f, 18f, 25f, 1.8f, 150,
+                "sword_magic", 1, 1f, Vector3.one * 1.5f);
+        }
+
+        private void SpawnExitRoomContent(RoomDef room)
+        {
+            Vector3 center = _entrancePos + new Vector3(0, room.YOffset, room.ZOffset);
+
+            SpawnDungeonTorch(center + new Vector3(room.Width * 0.35f, 2f, 0));
+            SpawnDungeonTorch(center + new Vector3(-room.Width * 0.35f, 2f, 0));
+
+            // Exit portal
+            SpawnExitPortal(center);
+        }
+
+        private void SpawnRoomCornerTorches(Vector3 center, float width, float depth)
+        {
+            float hw = width * 0.4f;
+            float hd = depth * 0.4f;
+            SpawnDungeonTorch(center + new Vector3(hw, 2f, hd));
+            SpawnDungeonTorch(center + new Vector3(-hw, 2f, hd));
+            SpawnDungeonTorch(center + new Vector3(hw, 2f, -hd));
+            SpawnDungeonTorch(center + new Vector3(-hw, 2f, -hd));
+        }
+
+        // ===================================================================
+        //  ENTITY SPAWNING (reuses EnemySpawner patterns)
+        // ===================================================================
+
+        private void SpawnDungeonEnemy(Vector3 pos, string name, Mesh mesh, Color color,
+            int hp, int dmg, float speed, float detectRange, float chaseRange,
+            float attackCooldown, int xpReward, string lootId, int lootCount,
+            float lootChance, Vector3 scale)
+        {
+            var enemyGo = new GameObject($"DEnemy_{name}_{Random.Range(0, 9999)}");
+            enemyGo.transform.SetParent(_dungeonRoot.transform);
+            enemyGo.transform.position = pos;
+
+            // Visual mesh
+            var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            Material mat;
+
+            if (mesh != null)
+            {
+                var mf = enemyGo.AddComponent<MeshFilter>();
+                mf.sharedMesh = mesh;
+                var mr = enemyGo.AddComponent<MeshRenderer>();
+                mat = new Material(shader) { color = color };
+                mr.material = mat;
+                enemyGo.transform.localScale = scale;
+            }
+            else
+            {
+                // Fallback capsule
+                var capsule = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                capsule.transform.SetParent(enemyGo.transform);
+                capsule.transform.localPosition = new Vector3(0, 0.75f, 0);
+                capsule.transform.localScale = scale;
+                mat = new Material(shader) { color = color };
+                capsule.GetComponent<Renderer>().material = mat;
+                var col = capsule.GetComponent<Collider>();
+                if (col != null) Destroy(col);
+            }
+
+            // Collider
+            var capsuleCol = enemyGo.AddComponent<CapsuleCollider>();
+            capsuleCol.height = 1.6f;
+            capsuleCol.radius = 0.4f;
+            capsuleCol.center = new Vector3(0, 0.8f, 0);
+
+            // EnemyBase
+            var enemy = enemyGo.AddComponent<EnemyBase>();
+            enemy.EnemyName = name;
+            enemy.MaxHealth = hp;
+            enemy.AttackDamage = dmg;
+            enemy.AttackRange = 2f;
+            enemy.AttackCooldown = attackCooldown;
+            enemy.MoveSpeed = speed;
+            enemy.DetectRange = detectRange;
+            enemy.ChaseRange = chaseRange;
+            enemy.XPReward = xpReward;
+            enemy.LootId = lootId;
+            enemy.LootCount = lootCount;
+            enemy.LootChance = lootChance;
+
+            enemy.Init(mat);
+
+            // AI
+            var ai = enemyGo.AddComponent<EnemyAI>();
+            ai.Init(enemy);
+
+            // Health bar
+            var hpBar = enemyGo.AddComponent<EnemyHealthBar>();
+            hpBar.Init(enemy);
+
+            _dungeonEnemies.Add(enemy);
+            enemy.OnDeath += (e) => _dungeonEnemies.Remove(e);
+
+            Debug.Log($"[DungeonManager] Spawned {name} at {pos}");
+        }
+
+        private void SpawnDungeonChest(Vector3 pos)
+        {
+            var chestGo = new GameObject("DungeonChest");
+            chestGo.transform.SetParent(_dungeonRoot.transform);
+            chestGo.transform.position = pos;
+
+            // Lid pivot
+            var lidPivot = new GameObject("LidPivot");
+            lidPivot.transform.SetParent(chestGo.transform);
+            lidPivot.transform.localPosition = new Vector3(0, 0.35f, -0.2f);
+
+            // Chest body (primitive)
+            var baseBox = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            baseBox.transform.SetParent(chestGo.transform);
+            baseBox.transform.localPosition = new Vector3(0, 0.2f, 0);
+            baseBox.transform.localScale = new Vector3(0.8f, 0.35f, 0.5f);
+            Object.Destroy(baseBox.GetComponent<Collider>());
+            var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            baseBox.GetComponent<Renderer>().material = new Material(shader) { color = new Color(0.6f, 0.45f, 0.15f) };
+
+            // Lid
+            var lid = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            lid.transform.SetParent(lidPivot.transform);
+            lid.transform.localPosition = new Vector3(0, 0.08f, 0.2f);
+            lid.transform.localScale = new Vector3(0.82f, 0.12f, 0.52f);
+            Object.Destroy(lid.GetComponent<Collider>());
+            lid.GetComponent<Renderer>().material = new Material(shader) { color = new Color(0.65f, 0.5f, 0.2f) };
+
+            // Collider
+            var col = chestGo.AddComponent<BoxCollider>();
+            col.center = new Vector3(0, 0.25f, 0);
+            col.size = new Vector3(0.9f, 0.5f, 0.6f);
+
+            // TreasureChest component with guaranteed good loot
+            var chest = chestGo.AddComponent<DungeonChest>();
+            chest.Init(lidPivot.transform);
+        }
+
+        private void SpawnDungeonTorch(Vector3 pos)
+        {
+            var torchGo = new GameObject("DungeonTorch");
+            torchGo.transform.SetParent(_dungeonRoot.transform);
+            torchGo.transform.position = pos;
+
+            // Torch sconce mesh or fallback
+            if (_dungeonMeshes.Length > 1 && _dungeonMeshes[1] != null)
+            {
+                var meshGo = new GameObject("SconceMesh");
+                meshGo.transform.SetParent(torchGo.transform);
+                meshGo.transform.localPosition = Vector3.zero;
+                meshGo.transform.localScale = Vector3.one * 2f;
+                var mf = meshGo.AddComponent<MeshFilter>();
+                mf.sharedMesh = _dungeonMeshes[1];
+                var mr = meshGo.AddComponent<MeshRenderer>();
+                mr.sharedMaterial = new Material(_vcMaterial);
+            }
+            else
+            {
+                // Fallback: small cylinder
+                var cyl = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                cyl.transform.SetParent(torchGo.transform);
+                cyl.transform.localPosition = Vector3.zero;
+                cyl.transform.localScale = new Vector3(0.05f, 0.15f, 0.05f);
+                Object.Destroy(cyl.GetComponent<Collider>());
+                var mat = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
+                mat.color = new Color(0.3f, 0.2f, 0.1f);
+                cyl.GetComponent<Renderer>().material = mat;
+            }
+
+            // Point light
+            var light = torchGo.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = new Color(1f, 0.65f, 0.3f);
+            light.intensity = 2.5f;
+            light.range = 10f;
+            light.shadows = LightShadows.None; // Performance: no shadows for torches
+        }
+
+        private void SpawnExitPortal(Vector3 pos)
+        {
+            var portalGo = new GameObject("ExitPortal");
+            portalGo.transform.SetParent(_dungeonRoot.transform);
+            portalGo.transform.position = pos;
+
+            // Portal mesh or fallback
+            if (_dungeonMeshes.Length > 2 && _dungeonMeshes[2] != null)
+            {
+                var meshGo = new GameObject("PortalMesh");
+                meshGo.transform.SetParent(portalGo.transform);
+                meshGo.transform.localPosition = Vector3.zero;
+                meshGo.transform.localScale = Vector3.one;
+                var mf = meshGo.AddComponent<MeshFilter>();
+                mf.sharedMesh = _dungeonMeshes[2];
+                var mr = meshGo.AddComponent<MeshRenderer>();
+                mr.sharedMaterial = new Material(_vcMaterial);
+            }
+            else
+            {
+                // Fallback: glowing cylinder
+                var cyl = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                cyl.transform.SetParent(portalGo.transform);
+                cyl.transform.localPosition = new Vector3(0, 1.5f, 0);
+                cyl.transform.localScale = new Vector3(1.5f, 1.5f, 1.5f);
+                Object.Destroy(cyl.GetComponent<Collider>());
+                var mat = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color"));
+                mat.color = new Color(0.3f, 0.2f, 0.8f, 0.5f);
+                cyl.GetComponent<Renderer>().material = mat;
+            }
+
+            // Glow light
+            var light = portalGo.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = new Color(0.4f, 0.3f, 0.9f);
+            light.intensity = 3f;
+            light.range = 8f;
+
+            // DungeonExit interactable
+            var exit = portalGo.AddComponent<DungeonExit>();
+            exit.Init();
+        }
+
+        // ===================================================================
+        //  LIGHTING
+        // ===================================================================
+
+        private void SaveLighting()
+        {
+            _savedFogStart = RenderSettings.fogStartDistance;
+            _savedFogEnd = RenderSettings.fogEndDistance;
+            _savedFogColor = RenderSettings.fogColor;
+            _savedAmbient = RenderSettings.ambientLight;
+            _savedSunIntensity = _sunLight != null ? _sunLight.intensity : 1f;
+        }
+
+        private void ApplyDungeonLighting()
+        {
+            RenderSettings.fog = true;
+            RenderSettings.fogMode = FogMode.Linear;
+            RenderSettings.fogStartDistance = 5f;
+            RenderSettings.fogEndDistance = 25f;
+            RenderSettings.fogColor = new Color(0.03f, 0.02f, 0.04f);
+            RenderSettings.ambientLight = new Color(0.05f, 0.04f, 0.06f);
+
+            if (_sunLight != null)
+                _sunLight.intensity = 0.05f;
+        }
+
+        private void RestoreLighting()
+        {
+            RenderSettings.fogStartDistance = _savedFogStart;
+            RenderSettings.fogEndDistance = _savedFogEnd;
+            RenderSettings.fogColor = _savedFogColor;
+            RenderSettings.ambientLight = _savedAmbient;
+
+            if (_sunLight != null)
+                _sunLight.intensity = _savedSunIntensity;
+        }
+
+        // ===================================================================
+        //  OVERWORLD TOGGLE
+        // ===================================================================
+
+        private void ToggleOverworld(bool enabled)
+        {
+            var spawner = FindAnyObjectByType<EnemySpawner>();
+            if (spawner != null) spawner.enabled = enabled;
+
+            var dayNight = FindAnyObjectByType<DayNightCycle>();
+            if (dayNight != null) dayNight.enabled = enabled;
+
+            // Don't disable WorldManager entirely — just stop chunk streaming
+            // The terrain colliders need to stay for when we return
+        }
+    }
+
+    /// <summary>
+    /// Special chest for dungeon with guaranteed good loot.
+    /// </summary>
+    public class DungeonChest : Interactable
+    {
+        private Transform _lid;
+        private float _openAngle;
+        private bool _opening;
+
+        public void Init(Transform lid)
+        {
+            _lid = lid;
+            PromptText = "Open Chest";
+            InteractRange = 2.5f;
+        }
+
+        protected override void OnInteract()
+        {
+            MarkUsed();
+            _opening = true;
+
+            var inventory = FindAnyObjectByType<InventoryComponent>();
+            if (inventory != null)
+            {
+                // Guaranteed enchanted blade + potions
+                var blade = ItemDatabase.Get("sword_magic");
+                if (blade != null) inventory.Inventory.AddItem(blade);
+
+                var potion = ItemDatabase.Get("potion_large");
+                if (potion != null) inventory.Inventory.AddItem(potion, 3);
+
+                Debug.Log("[DungeonChest] Found: Enchanted Blade + 3 Large Potions!");
+            }
+
+            if (Audio.SoundManager.Instance != null)
+                Audio.SoundManager.Instance.PlayChestOpen();
+            if (VFX.ParticleEffectManager.Instance != null)
+                VFX.ParticleEffectManager.Instance.SpawnChestSparkle(transform.position + Vector3.up * 0.3f);
+        }
+
+        protected override void Update()
+        {
+            base.Update();
+
+            if (_opening && _lid != null)
+            {
+                _openAngle = Mathf.Lerp(_openAngle, -110f, 5f * Time.deltaTime);
+                _lid.localRotation = Quaternion.Euler(_openAngle, 0, 0);
+                if (_openAngle < -105f)
+                    _opening = false;
+            }
+        }
+    }
+}
