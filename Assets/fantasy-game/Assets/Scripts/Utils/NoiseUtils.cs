@@ -16,6 +16,18 @@ namespace FantasyGame.Utils
         public float TargetHeight;   // Height the terrain flattens to
     }
 
+    /// <summary>
+    /// Defines a rectangular hole in the terrain (triangles are skipped).
+    /// Used for dungeon entrances and cave openings.
+    /// </summary>
+    public struct HoleZone
+    {
+        public float CenterX;
+        public float CenterZ;
+        public float HalfWidth;     // Half-size on X axis
+        public float HalfDepth;     // Half-size on Z axis
+    }
+
     public static class NoiseUtils
     {
         public const int DEFAULT_OCTAVES = 4;
@@ -30,6 +42,11 @@ namespace FantasyGame.Utils
         public static readonly List<FlatZone> Zones = new List<FlatZone>();
 
         /// <summary>
+        /// Registered hole zones. Terrain triangles inside holes are skipped.
+        /// </summary>
+        public static readonly List<HoleZone> Holes = new List<HoleZone>();
+
+        /// <summary>
         /// Register a circular flat zone at the given world position.
         /// </summary>
         public static void RegisterFlatZone(float centerX, float centerZ, float radius, float falloff, float targetHeight)
@@ -42,6 +59,36 @@ namespace FantasyGame.Utils
                 FalloffRadius = falloff,
                 TargetHeight = targetHeight
             });
+        }
+
+        /// <summary>
+        /// Register a rectangular hole zone. Terrain mesh triangles will be
+        /// skipped inside this area, creating a physical opening.
+        /// </summary>
+        public static void RegisterHole(float centerX, float centerZ, float halfWidth, float halfDepth)
+        {
+            Holes.Add(new HoleZone
+            {
+                CenterX = centerX,
+                CenterZ = centerZ,
+                HalfWidth = halfWidth,
+                HalfDepth = halfDepth
+            });
+        }
+
+        /// <summary>
+        /// Check if a world position is inside any registered hole zone.
+        /// </summary>
+        public static bool IsInHole(float worldX, float worldZ)
+        {
+            for (int i = 0; i < Holes.Count; i++)
+            {
+                var h = Holes[i];
+                if (Mathf.Abs(worldX - h.CenterX) < h.HalfWidth &&
+                    Mathf.Abs(worldZ - h.CenterZ) < h.HalfDepth)
+                    return true;
+            }
+            return false;
         }
 
         /// <summary>

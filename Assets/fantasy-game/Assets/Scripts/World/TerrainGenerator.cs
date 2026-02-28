@@ -150,26 +150,34 @@ namespace FantasyGame.World
                 }
             }
 
-            // Build triangle indices
-            int quadCount = chunkSize * chunkSize;
-            var triangles = new int[quadCount * 6];
-            int tri = 0;
+            // Build triangle indices, skipping quads that fall inside hole zones
+            var triangleList = new List<int>();
 
             for (int z = 0; z < chunkSize; z++)
             {
                 for (int x = 0; x < chunkSize; x++)
                 {
+                    // Check if any corner of this quad is inside a terrain hole
+                    float wx0 = originX + x;
+                    float wz0 = originZ + z;
+                    float wx1 = originX + x + 1;
+                    float wz1 = originZ + z + 1;
+
+                    if (NoiseUtils.IsInHole(wx0, wz0) || NoiseUtils.IsInHole(wx1, wz0) ||
+                        NoiseUtils.IsInHole(wx0, wz1) || NoiseUtils.IsInHole(wx1, wz1))
+                        continue; // Skip this quad — creates a hole in the terrain
+
                     int bl = z * CHUNK_VERTS + x;
                     int br = bl + 1;
                     int tl = bl + CHUNK_VERTS;
                     int tr = tl + 1;
 
-                    triangles[tri++] = bl;
-                    triangles[tri++] = tl;
-                    triangles[tri++] = br;
-                    triangles[tri++] = br;
-                    triangles[tri++] = tl;
-                    triangles[tri++] = tr;
+                    triangleList.Add(bl);
+                    triangleList.Add(tl);
+                    triangleList.Add(br);
+                    triangleList.Add(br);
+                    triangleList.Add(tl);
+                    triangleList.Add(tr);
                 }
             }
 
@@ -179,7 +187,7 @@ namespace FantasyGame.World
             mesh.vertices = vertices;
             mesh.normals = normals;
             mesh.colors = colors;
-            mesh.triangles = triangles;
+            mesh.triangles = triangleList.ToArray();
             mesh.RecalculateBounds();
 
             return mesh;

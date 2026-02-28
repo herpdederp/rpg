@@ -103,6 +103,10 @@ namespace FantasyGame.Dungeon
             NoiseUtils.RegisterFlatZone(ENTRANCE_X, ENTRANCE_Z, 6f, 4f,
                 NoiseUtils.SampleHeight(ENTRANCE_X, ENTRANCE_Z, seed));
 
+            // Carve a hole in terrain behind the entrance so player can walk in
+            // Hole extends from entrance back into the hillside (-Z direction)
+            NoiseUtils.RegisterHole(ENTRANCE_X, ENTRANCE_Z - 5f, 3f, 6f);
+
             // Spawn the entrance on the overworld (always visible)
             SpawnEntranceOnOverworld();
 
@@ -275,18 +279,19 @@ namespace FantasyGame.Dungeon
             _dungeonRoot = new GameObject("DungeonInterior");
 
             // Room definitions (Z/Y offsets relative to entrance)
+            // Gentle descent: ~0.3m per room for a natural cave-like slope
             var rooms = new RoomDef[]
             {
-                new RoomDef { Name = "Entry",     ZOffset = -5f,  YOffset = -2f,  Width = 12, Depth = 10, DoorNorth = false, DoorSouth = true },
-                new RoomDef { Name = "Corr1",     ZOffset = -13f, YOffset = -3f,  Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Combat1",   ZOffset = -21f, YOffset = -4f,  Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Corr2",     ZOffset = -30f, YOffset = -5f,  Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Combat2",   ZOffset = -38f, YOffset = -6f,  Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Corr3",     ZOffset = -47f, YOffset = -7f,  Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Treasure",  ZOffset = -55f, YOffset = -8f,  Width = 10, Depth = 10, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Corr4",     ZOffset = -62f, YOffset = -9f,  Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Boss",      ZOffset = -72f, YOffset = -10f, Width = 16, Depth = 16, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Exit",      ZOffset = -88f, YOffset = -10f, Width = 6,  Depth = 6,  DoorNorth = true, DoorSouth = false },
+                new RoomDef { Name = "Entry",     ZOffset = -5f,  YOffset = -0.5f, Width = 12, Depth = 10, DoorNorth = false, DoorSouth = true },
+                new RoomDef { Name = "Corr1",     ZOffset = -13f, YOffset = -0.8f, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Combat1",   ZOffset = -21f, YOffset = -1.1f, Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Corr2",     ZOffset = -30f, YOffset = -1.4f, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Combat2",   ZOffset = -38f, YOffset = -1.7f, Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Corr3",     ZOffset = -47f, YOffset = -2.0f, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Treasure",  ZOffset = -55f, YOffset = -2.3f, Width = 10, Depth = 10, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Corr4",     ZOffset = -62f, YOffset = -2.5f, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Boss",      ZOffset = -72f, YOffset = -2.8f, Width = 16, Depth = 16, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Exit",      ZOffset = -88f, YOffset = -3.0f, Width = 6,  Depth = 6,  DoorNorth = true, DoorSouth = false },
             };
 
             // Build each room
@@ -297,9 +302,10 @@ namespace FantasyGame.Dungeon
             }
 
             // Entry ramp (connects entrance surface to entry room floor)
+            // Shallow slope: from entrance level down 0.5m to entry room
             BuildRamp(
                 _entrancePos + new Vector3(0, -0.1f, -0.5f),
-                _entrancePos + new Vector3(0, -2f, -5f + 5f) // top of entry room
+                _entrancePos + new Vector3(0, -0.5f, -2f)
             );
 
             // Spawn content
