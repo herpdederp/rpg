@@ -150,34 +150,26 @@ namespace FantasyGame.World
                 }
             }
 
-            // Build triangle indices, skipping quads that fall inside hole zones
-            var triangleList = new List<int>();
+            // Build triangle indices — all quads, no holes
+            int triCount = chunkSize * chunkSize * 6;
+            var triangles = new int[triCount];
+            int ti = 0;
 
             for (int z = 0; z < chunkSize; z++)
             {
                 for (int x = 0; x < chunkSize; x++)
                 {
-                    // Check if any corner of this quad is inside a terrain hole
-                    float wx0 = originX + x;
-                    float wz0 = originZ + z;
-                    float wx1 = originX + x + 1;
-                    float wz1 = originZ + z + 1;
-
-                    if (NoiseUtils.IsInHole(wx0, wz0) || NoiseUtils.IsInHole(wx1, wz0) ||
-                        NoiseUtils.IsInHole(wx0, wz1) || NoiseUtils.IsInHole(wx1, wz1))
-                        continue; // Skip this quad — creates a hole in the terrain
-
                     int bl = z * CHUNK_VERTS + x;
                     int br = bl + 1;
                     int tl = bl + CHUNK_VERTS;
                     int tr = tl + 1;
 
-                    triangleList.Add(bl);
-                    triangleList.Add(tl);
-                    triangleList.Add(br);
-                    triangleList.Add(br);
-                    triangleList.Add(tl);
-                    triangleList.Add(tr);
+                    triangles[ti++] = bl;
+                    triangles[ti++] = tl;
+                    triangles[ti++] = br;
+                    triangles[ti++] = br;
+                    triangles[ti++] = tl;
+                    triangles[ti++] = tr;
                 }
             }
 
@@ -187,7 +179,7 @@ namespace FantasyGame.World
             mesh.vertices = vertices;
             mesh.normals = normals;
             mesh.colors = colors;
-            mesh.triangles = triangleList.ToArray();
+            mesh.triangles = triangles;
             mesh.RecalculateBounds();
 
             return mesh;

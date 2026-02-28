@@ -112,16 +112,24 @@ namespace FantasyGame.Loading
             _dungeonMeshes = await LoadMeshesFromGlb(DUNGEON_FILENAME);
             Debug.Log($"[GltfBootstrap] World meshes: npcs={_npcMeshes.Length}, props={_propMeshes.Length}, items={_itemMeshes.Length}, buildings={_buildingMeshes.Length}, dungeon={_dungeonMeshes.Length}");
 
-            // --- Register flat zones and holes (must happen before any terrain generation) ---
+            // --- Register flat zones and ramps (must happen before any terrain generation) ---
             NoiseUtils.RegisterFlatZone(80f, 80f, 16f, 12f, 12f); // Village plateau
 
-            // Dungeon: flat zone around entrance + small hole just for the ramp mouth
+            // Dungeon: flat zone around entrance + ramp zone that depresses terrain
+            // into a walkable slope down to the entry room. No holes — solid terrain everywhere.
             float dungeonEntranceY = NoiseUtils.SampleHeight(140f, 130f, WORLD_SEED);
             NoiseUtils.RegisterFlatZone(140f, 130f, 8f, 6f, dungeonEntranceY);
-            // Hole: just wide enough for the 4m corridor, extends from entrance (Z=130)
-            // back to where the ramp meets the entry room (Z=123.5). The ramp surface
-            // fills this hole so the player walks on the ramp, not falls through.
-            NoiseUtils.RegisterHole(140f, 126.75f, 3f, 3.75f);
+            // Ramp: terrain descends from entrance (Z=130) to entry room door (Z=123.5)
+            // 5m wide core with 2m smooth margins on each side
+            NoiseUtils.RegisterRampZone(
+                centerX: 140f,
+                halfWidth: 2.5f,
+                northZ: 130f,
+                southZ: 123.5f,
+                startY: dungeonEntranceY,
+                endY: dungeonEntranceY - 3f,
+                marginWidth: 2f
+            );
 
             // --- Initialize world ---
             var worldGo = new GameObject("WorldManager");

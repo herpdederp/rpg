@@ -17,15 +17,19 @@ namespace FantasyGame.Utils
     }
 
     /// <summary>
-    /// Defines a rectangular hole in the terrain (triangles are skipped).
-    /// Used for dungeon entrances and cave openings.
+    /// Defines a rectangular ramp zone that depresses terrain height along its length.
+    /// The terrain smoothly descends from StartY at the north edge to EndY at the south edge.
+    /// Used for dungeon entrances — the terrain itself forms the walkable ramp.
     /// </summary>
-    public struct HoleZone
+    public struct RampZone
     {
-        public float CenterX;
-        public float CenterZ;
+        public float CenterX;       // Center X position
         public float HalfWidth;     // Half-size on X axis
-        public float HalfDepth;     // Half-size on Z axis
+        public float NorthZ;        // Z position of the top (entrance)
+        public float SouthZ;        // Z position of the bottom (room connection)
+        public float StartY;        // Height at the north edge (terrain level)
+        public float EndY;          // Height at the south edge (room floor level)
+        public float MarginWidth;   // Smooth blend margin on X edges
     }
 
     public static class NoiseUtils
@@ -42,9 +46,9 @@ namespace FantasyGame.Utils
         public static readonly List<FlatZone> Zones = new List<FlatZone>();
 
         /// <summary>
-        /// Registered hole zones. Terrain triangles inside holes are skipped.
+        /// Registered ramp zones. Terrain height is depressed along the ramp path.
         /// </summary>
-        public static readonly List<HoleZone> Holes = new List<HoleZone>();
+        public static readonly List<RampZone> Ramps = new List<RampZone>();
 
         /// <summary>
         /// Register a circular flat zone at the given world position.
@@ -62,33 +66,22 @@ namespace FantasyGame.Utils
         }
 
         /// <summary>
-        /// Register a rectangular hole zone. Terrain mesh triangles will be
-        /// skipped inside this area, creating a physical opening.
+        /// Register a ramp zone. Terrain vertices inside this zone will be depressed
+        /// to form a sloped walkway from startY (north) to endY (south).
         /// </summary>
-        public static void RegisterHole(float centerX, float centerZ, float halfWidth, float halfDepth)
+        public static void RegisterRampZone(float centerX, float halfWidth, float northZ, float southZ,
+            float startY, float endY, float marginWidth = 2f)
         {
-            Holes.Add(new HoleZone
+            Ramps.Add(new RampZone
             {
                 CenterX = centerX,
-                CenterZ = centerZ,
                 HalfWidth = halfWidth,
-                HalfDepth = halfDepth
+                NorthZ = northZ,
+                SouthZ = southZ,
+                StartY = startY,
+                EndY = endY,
+                MarginWidth = marginWidth
             });
-        }
-
-        /// <summary>
-        /// Check if a world position is inside any registered hole zone.
-        /// </summary>
-        public static bool IsInHole(float worldX, float worldZ)
-        {
-            for (int i = 0; i < Holes.Count; i++)
-            {
-                var h = Holes[i];
-                if (Mathf.Abs(worldX - h.CenterX) < h.HalfWidth &&
-                    Mathf.Abs(worldZ - h.CenterZ) < h.HalfDepth)
-                    return true;
-            }
-            return false;
         }
 
         /// <summary>
@@ -154,6 +147,46 @@ namespace FantasyGame.Utils
                     }
 
                     height = Mathf.Lerp(height, zone.TargetHeight, blend);
+                }
+            }
+
+            // Apply ramp zone modifiers — depress terrain to form walkable ramps
+            for (int r = 0; r < Ramps.Count; r++)
+            {
+                var ramp = Ramps[r];
+                float distX = Mathf.Abs(worldX - ramp.CenterX);
+
+                // Check if within X range (core + margin)
+                if (distX > ramp.HalfWidth + ramp.MarginWidth)
+                    continue;
+
+                // Check if within Z range
+                if (worldZ > ramp.NorthZ || worldZ < ramp.SouthZ)
+                    continue;
+
+                // Calculate the ramp height at this Z position (linear interpolation)
+                float tZ = (ramp.NorthZ - worldZ) / (ramp.NorthZ - ramp.SouthZ);
+                tZ = Mathf.Clamp01(tZ);
+                float rampHeight = Mathf.Lerp(ramp.StartY, ramp.EndY, tZ);
+
+                // Calculate X blend — full effect in core, smooth falloff at edges
+                float blendX;
+                if (distX <= ramp.HalfWidth)
+                {
+                    blendX = 1.0f; // Fully inside ramp
+                }
+                else
+                {
+                    // Smoothstep falloff on X edges
+                    float tX = (distX - ramp.HalfWidth) / ramp.MarginWidth;
+                    tX = Mathf.Clamp01(tX);
+                    blendX = 1.0f - (tX * tX * (3.0f - 2.0f * tX));
+                }
+
+                // Only depress terrain — never raise it
+                if (rampHeight < height)
+                {
+                    height = Mathf.Lerp(height, rampHeight, blendX);
                 }
             }
 
