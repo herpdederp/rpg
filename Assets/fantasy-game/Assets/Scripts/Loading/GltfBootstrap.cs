@@ -115,19 +115,20 @@ namespace FantasyGame.Loading
             // --- Register flat zones and ramps (must happen before any terrain generation) ---
             NoiseUtils.RegisterFlatZone(80f, 80f, 16f, 12f, 12f); // Village plateau
 
-            // Dungeon: flat zone around entrance + ramp zone that depresses terrain
-            // into a walkable slope down to the entry room. No holes — solid terrain everywhere.
+            // Dungeon: flat zone around entrance (north side only) + ramp zone
+            // The flat zone is offset north so it doesn't fight with the ramp going south.
             float dungeonEntranceY = NoiseUtils.SampleHeight(140f, 130f, WORLD_SEED);
-            NoiseUtils.RegisterFlatZone(140f, 130f, 8f, 6f, dungeonEntranceY);
-            // Ramp: terrain descends from entrance (Z=130) to entry room door (Z=123.5)
-            // 5m wide core with 2m smooth margins on each side
+            NoiseUtils.RegisterFlatZone(140f, 134f, 6f, 4f, dungeonEntranceY);
+            // Ramp: terrain descends from entrance (Z=130) down well past the entry room
+            // doorway (Z=123.5) to Z=118, staying depressed so terrain doesn't block the door.
+            // The rooms have ceilings so depressed terrain below them doesn't matter.
             NoiseUtils.RegisterRampZone(
                 centerX: 140f,
-                halfWidth: 2.5f,
-                northZ: 130f,
-                southZ: 123.5f,
+                halfWidth: 3f,
+                northZ: 130.5f,
+                southZ: 118f,
                 startY: dungeonEntranceY,
-                endY: dungeonEntranceY - 3f,
+                endY: dungeonEntranceY - 5.4f,
                 marginWidth: 2f
             );
 
