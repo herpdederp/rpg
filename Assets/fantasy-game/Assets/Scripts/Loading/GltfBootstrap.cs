@@ -115,19 +115,22 @@ namespace FantasyGame.Loading
             // --- Register flat zones and holes (must happen before any terrain generation) ---
             NoiseUtils.RegisterFlatZone(80f, 80f, 16f, 12f, 12f); // Village plateau
 
-            // Dungeon: flat zone at entrance + hole for the entire trench
+            // Dungeon: flat zone around entrance + small hole for the ramp opening only
             float dungeonEntranceY = NoiseUtils.SampleHeight(140f, 130f, WORLD_SEED);
-            NoiseUtils.RegisterFlatZone(140f, 130f, 6f, 4f, dungeonEntranceY);
-            NoiseUtils.RegisterHole(140f, 130f - 47f, 10f, 48f);
+            NoiseUtils.RegisterFlatZone(140f, 130f, 8f, 6f, dungeonEntranceY);
+            // Hole is just wide enough for the ramp corridor (4m wide) and deep enough
+            // to clear the ramp descent (about 3m into -Z from entrance)
+            NoiseUtils.RegisterHole(140f, 130f - 2f, 3f, 3f);
 
             // --- Initialize world ---
             var worldGo = new GameObject("WorldManager");
             _worldManager = worldGo.AddComponent<WorldManager>();
             _worldManager.Init(WORLD_SEED, terrainMat, vegetationMat, grassMat, treeMeshes, rockMeshes);
 
-            // Pre-generate terrain chunks around spawn (village plateau)
-            var spawnPos = new Vector3(80f, 0f, 80f);
+            // Pre-generate terrain chunks around spawn and dungeon entrance
+            var spawnPos = new Vector3(135f, 0f, 133f);
             _worldManager.Terrain.UpdateChunks(spawnPos);
+            _worldManager.Terrain.UpdateChunks(new Vector3(80f, 0f, 80f)); // village too
             // Wait a frame so MeshColliders are baked by physics
             await Task.Yield();
 
@@ -154,8 +157,8 @@ namespace FantasyGame.Loading
             // Instantiate with GameObjectInstantiator (needed for animations)
             var characterRoot = new GameObject("Character");
 
-            // Spawn at village plateau
-            float spawnX = 80f, spawnZ = 80f;
+            // Spawn near dungeon entrance
+            float spawnX = 135f, spawnZ = 133f;
             float spawnHeight = _worldManager.GetTerrainHeight(spawnX, spawnZ);
             characterRoot.transform.position = new Vector3(spawnX, spawnHeight + 0.5f, spawnZ);
 

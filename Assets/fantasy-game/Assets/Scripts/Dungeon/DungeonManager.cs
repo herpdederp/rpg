@@ -232,12 +232,10 @@ namespace FantasyGame.Dungeon
 
         private bool IsPlayerInTrench()
         {
-            // Player is "in dungeon" when inside the hole zone and below entrance level
-            float dx = Mathf.Abs(_player.position.x - ENTRANCE_X);
-            float dz = _player.position.z - ENTRANCE_Z; // negative when inside dungeon
+            // Player is "in dungeon" when below entrance terrain level
+            // (they've descended the ramp into the underground rooms)
             float playerY = _player.position.y;
-
-            return dx < 10f && dz < -1f && dz > -95f && playerY < _entranceTerrainY - 0.5f;
+            return playerY < _entranceTerrainY - 1.5f;
         }
 
         // Legacy methods kept for DungeonExit interactable
@@ -271,16 +269,17 @@ namespace FantasyGame.Dungeon
             // Y offsets are relative to entrance terrain height
             var rooms = new RoomDef[]
             {
-                new RoomDef { Name = "Entry",     ZOffset = -7f,   YOffset = -3f,   Width = 12, Depth = 10, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Corr1",     ZOffset = -15f,  YOffset = -4f,   Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Combat1",   ZOffset = -24f,  YOffset = -5f,   Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Corr2",     ZOffset = -33f,  YOffset = -6f,   Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Combat2",   ZOffset = -42f,  YOffset = -7f,   Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Corr3",     ZOffset = -51f,  YOffset = -8f,   Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Treasure",  ZOffset = -59f,  YOffset = -9f,   Width = 10, Depth = 10, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Corr4",     ZOffset = -66f,  YOffset = -10f,  Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Boss",      ZOffset = -76f,  YOffset = -11f,  Width = 16, Depth = 16, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Exit",      ZOffset = -90f,  YOffset = -11f,  Width = 6,  Depth = 6,  DoorNorth = true, DoorSouth = false },
+                // Entry room: north wall at ZOffset + Depth/2 = -11.5 + 5 = -6.5 (meets ramp bottom)
+                new RoomDef { Name = "Entry",     ZOffset = -11.5f, YOffset = -3f,   Width = 10, Depth = 10, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Corr1",     ZOffset = -20f,   YOffset = -3.5f, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Combat1",   ZOffset = -29f,   YOffset = -4f,   Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Corr2",     ZOffset = -39f,   YOffset = -4.5f, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Combat2",   ZOffset = -48f,   YOffset = -5f,   Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Corr3",     ZOffset = -57f,   YOffset = -5.5f, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Treasure",  ZOffset = -65f,   YOffset = -6f,   Width = 10, Depth = 10, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Corr4",     ZOffset = -73f,   YOffset = -6.5f, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Boss",      ZOffset = -83f,   YOffset = -7f,   Width = 16, Depth = 16, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Exit",      ZOffset = -96f,   YOffset = -7f,   Width = 6,  Depth = 6,  DoorNorth = true, DoorSouth = false },
             };
 
             // Build each room
@@ -290,13 +289,29 @@ namespace FantasyGame.Dungeon
                 BuildRoom(center, room.Width, room.Depth, ROOM_HEIGHT, room.DoorNorth, room.DoorSouth);
             }
 
-            // Ramp from entrance surface down to entry room
-            // Entry room north wall is at ZOffset + Depth/2 = -7 + 5 = -2
-            // Entry room floor is at YOffset = -3
+            // Entrance ramp: from surface down to entry room north doorway
+            // Entry room north wall at ZOffset + Depth/2 = -11.5 + 5 = -6.5
+            // Drop of 3m over 6m horizontal = ~26 degrees
             BuildRamp(
-                _entrancePos + new Vector3(0, 0f, -0.5f),     // top: just past entrance arch
-                _entrancePos + new Vector3(0, -3f, -2f)       // bottom: entry room north doorway
+                _entrancePos + new Vector3(0, 0f, -0.5f),
+                _entrancePos + new Vector3(0, -3f, -6.5f)
             );
+
+            // Transition ramps between adjacent rooms (connect south wall of room[i] to north wall of room[i+1])
+            for (int i = 0; i < rooms.Length - 1; i++)
+            {
+                float southZ_i = rooms[i].ZOffset - rooms[i].Depth * 0.5f;   // south wall Z of room i
+                float northZ_next = rooms[i + 1].ZOffset + rooms[i + 1].Depth * 0.5f; // north wall Z of room i+1
+                float yDiff = rooms[i + 1].YOffset - rooms[i].YOffset;
+
+                if (Mathf.Abs(yDiff) > 0.01f || Mathf.Abs(southZ_i - northZ_next) > 0.1f)
+                {
+                    // Build a short connecting ramp between rooms
+                    Vector3 top = _entrancePos + new Vector3(0, rooms[i].YOffset, southZ_i);
+                    Vector3 bottom = _entrancePos + new Vector3(0, rooms[i + 1].YOffset, northZ_next);
+                    BuildRamp(top, bottom);
+                }
+            }
 
             // Spawn content
             SpawnEntryRoomContent(rooms[0]);
