@@ -115,12 +115,9 @@ namespace FantasyGame.Loading
             // --- Register flat zones and holes (must happen before any terrain generation) ---
             NoiseUtils.RegisterFlatZone(80f, 80f, 16f, 12f, 12f); // Village plateau
 
-            // Dungeon: flat zone around entrance + small hole for the ramp opening only
+            // Dungeon: flat zone around entrance — no hole needed, ramp goes underground
             float dungeonEntranceY = NoiseUtils.SampleHeight(140f, 130f, WORLD_SEED);
             NoiseUtils.RegisterFlatZone(140f, 130f, 8f, 6f, dungeonEntranceY);
-            // Hole is just wide enough for the ramp corridor (4m wide) and deep enough
-            // to clear the ramp descent (about 3m into -Z from entrance)
-            NoiseUtils.RegisterHole(140f, 130f - 2f, 3f, 3f);
 
             // --- Initialize world ---
             var worldGo = new GameObject("WorldManager");

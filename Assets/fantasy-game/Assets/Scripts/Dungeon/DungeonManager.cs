@@ -102,7 +102,7 @@ namespace FantasyGame.Dungeon
             }
 
             // Get terrain height at entrance
-            // Note: flat zone + hole are registered in GltfBootstrap before terrain generation
+            // Note: flat zone is registered in GltfBootstrap before terrain generation
             _entranceTerrainY = NoiseUtils.SampleHeight(ENTRANCE_X, ENTRANCE_Z, seed);
 
             _entrancePos = new Vector3(ENTRANCE_X, _entranceTerrainY, ENTRANCE_Z);
@@ -110,8 +110,8 @@ namespace FantasyGame.Dungeon
             // Spawn the entrance arch on the overworld (always visible)
             SpawnEntranceOnOverworld();
 
-            // Generate dungeon rooms immediately — they sit in the trench
-            // and are always present. Player walks down the ramp to enter.
+            // Generate dungeon rooms underground — player walks through the
+            // arch and down a ramp that descends beneath the terrain.
             GenerateDungeon();
 
             Debug.Log("[DungeonManager] Initialized. Entrance at " +
@@ -289,10 +289,11 @@ namespace FantasyGame.Dungeon
                 BuildRoom(center, room.Width, room.Depth, ROOM_HEIGHT, room.DoorNorth, room.DoorSouth);
             }
 
-            // Entrance ramp: from surface down to entry room north doorway
+            // Entrance ramp: from surface level down to entry room north doorway
             // Entry room north wall at ZOffset + Depth/2 = -11.5 + 5 = -6.5
             // Drop of 3m over 6m horizontal = ~26 degrees
-            BuildRamp(
+            // This ramp has a tunnel ceiling since it goes beneath the terrain
+            BuildEntranceRamp(
                 _entrancePos + new Vector3(0, 0f, -0.5f),
                 _entrancePos + new Vector3(0, -3f, -6.5f)
             );
@@ -416,11 +417,76 @@ namespace FantasyGame.Dungeon
             return wall;
         }
 
+        /// <summary>
+        /// Builds the main entrance ramp — an angled walkway from surface level
+        /// down to the first room. Includes a tunnel ceiling, side walls, and a
+        /// back-fill slab at terrain level so the player doesn't see a gap.
+        /// </summary>
+        private void BuildEntranceRamp(Vector3 topPos, Vector3 bottomPos)
+        {
+            Vector3 mid = (topPos + bottomPos) * 0.5f;
+            Vector3 dir = bottomPos - topPos;
+            float length = dir.magnitude;
+            float angle = Mathf.Atan2(dir.y, -Mathf.Abs(dir.z)) * Mathf.Rad2Deg;
+
+            // Angled ramp surface the player walks on
+            var ramp = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            ramp.transform.SetParent(_dungeonRoot.transform);
+            ramp.transform.position = mid;
+            ramp.transform.localScale = new Vector3(CORRIDOR_WIDTH, 0.3f, length);
+            ramp.transform.rotation = Quaternion.Euler(-angle, 0, 0);
+            ramp.GetComponent<Renderer>().material = _floorMat;
+            ramp.name = "EntranceRamp";
+
+            float tunnelHeight = 4f;
+
+            // Side walls along the ramp
+            for (int side = -1; side <= 1; side += 2)
+            {
+                var sideWall = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                sideWall.transform.SetParent(_dungeonRoot.transform);
+                sideWall.transform.position = mid + new Vector3(
+                    side * (CORRIDOR_WIDTH * 0.5f + WALL_THICKNESS * 0.5f),
+                    0f, 0f);
+                sideWall.transform.localScale = new Vector3(WALL_THICKNESS, tunnelHeight + 4f, length + 1f);
+                sideWall.GetComponent<Renderer>().material = _wallMat;
+                sideWall.name = "RampSideWall";
+            }
+
+            // Tunnel ceiling — flat slab at terrain height covering the ramp
+            // This hides the ramp from above and prevents the player seeing a gap
+            var ceiling = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            ceiling.transform.SetParent(_dungeonRoot.transform);
+            float ceilZ = (topPos.z + bottomPos.z) * 0.5f;
+            float ceilLength = Mathf.Abs(topPos.z - bottomPos.z) + 2f;
+            ceiling.transform.position = new Vector3(topPos.x, _entranceTerrainY + 0.1f, ceilZ);
+            ceiling.transform.localScale = new Vector3(CORRIDOR_WIDTH + WALL_THICKNESS * 2f, 0.5f, ceilLength);
+            ceiling.GetComponent<Renderer>().material = _ceilingMat;
+            ceiling.name = "RampCeiling";
+
+            // Fill slab: terrain-level cover extending over the whole dungeon footprint
+            // so the terrain hole area (if any residual) is covered
+            var fill = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            fill.transform.SetParent(_dungeonRoot.transform);
+            fill.transform.position = new Vector3(topPos.x, _entranceTerrainY - 0.05f, topPos.z - 50f);
+            fill.transform.localScale = new Vector3(22f, 0.3f, 100f);
+            fill.GetComponent<Renderer>().material = _floorMat;
+            fill.name = "TerrainFillSlab";
+            // Make the fill slab use the same layer so it blends (no shadow casting)
+            var fillRenderer = fill.GetComponent<Renderer>();
+            fillRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        }
+
+        /// <summary>
+        /// Builds a short connecting ramp between two adjacent rooms with different floor heights.
+        /// </summary>
         private void BuildRamp(Vector3 topPos, Vector3 bottomPos)
         {
             Vector3 mid = (topPos + bottomPos) * 0.5f;
             Vector3 dir = bottomPos - topPos;
             float length = dir.magnitude;
+            if (length < 0.1f) return; // rooms are flush, no ramp needed
+
             float angle = Mathf.Atan2(dir.y, -Mathf.Abs(dir.z)) * Mathf.Rad2Deg;
 
             // Ramp surface
@@ -436,10 +502,18 @@ namespace FantasyGame.Dungeon
             {
                 var sideWall = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 sideWall.transform.SetParent(_dungeonRoot.transform);
-                sideWall.transform.position = mid + new Vector3(side * (CORRIDOR_WIDTH * 0.5f + WALL_THICKNESS * 0.5f), 1.5f, 0);
+                sideWall.transform.position = mid + new Vector3(
+                    side * (CORRIDOR_WIDTH * 0.5f + WALL_THICKNESS * 0.5f), 1.5f, 0);
                 sideWall.transform.localScale = new Vector3(WALL_THICKNESS, 5f, length + 1f);
                 sideWall.GetComponent<Renderer>().material = _wallMat;
             }
+
+            // Ceiling over transition
+            var ceil = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            ceil.transform.SetParent(_dungeonRoot.transform);
+            ceil.transform.position = mid + new Vector3(0, ROOM_HEIGHT + 0.25f, 0);
+            ceil.transform.localScale = new Vector3(CORRIDOR_WIDTH + WALL_THICKNESS * 2f, 0.5f, length + 1f);
+            ceil.GetComponent<Renderer>().material = _ceilingMat;
         }
 
         // ===================================================================
