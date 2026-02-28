@@ -114,17 +114,21 @@ namespace FantasyGame.Dungeon
             // Center at ENTRANCE_Z - 47 to cover from Z=-1 to Z=-93
             NoiseUtils.RegisterHole(ENTRANCE_X, ENTRANCE_Z - 47f, 10f, 48f);
 
-            // Spawn the entrance on the overworld (always visible)
+            _entrancePos = new Vector3(ENTRANCE_X, _entranceTerrainY, ENTRANCE_Z);
+
+            // Spawn the entrance arch on the overworld (always visible)
             SpawnEntranceOnOverworld();
 
+            // Generate dungeon rooms immediately — they sit in the trench
+            // and are always present. Player walks down the ramp to enter.
+            GenerateDungeon();
+
             Debug.Log("[DungeonManager] Initialized. Entrance at " +
-                $"({ENTRANCE_X}, {ENTRANCE_Z}), terrainY={_entranceTerrainY:F1}.");
+                $"({ENTRANCE_X}, {ENTRANCE_Z}), terrainY={_entranceTerrainY:F1}. Dungeon built.");
         }
 
         private void SpawnEntranceOnOverworld()
         {
-            _entrancePos = new Vector3(ENTRANCE_X, _entranceTerrainY, ENTRANCE_Z);
-
             _entranceGo = new GameObject("DungeonEntrance_Overworld");
             _entranceGo.transform.position = _entrancePos;
 
@@ -146,16 +150,6 @@ namespace FantasyGame.Dungeon
                 // Fallback: two stone pillars + lintel
                 CreateFallbackEntrance(_entranceGo);
             }
-
-            // Collider — trigger for interaction detection
-            var col = _entranceGo.AddComponent<BoxCollider>();
-            col.center = new Vector3(0, 1.5f, 0);
-            col.size = new Vector3(0.5f, 3f, 0.8f);
-            col.isTrigger = true;
-
-            // Interactable component
-            var entrance = _entranceGo.AddComponent<DungeonEntrance>();
-            entrance.Init();
 
             // Flanking torches
             SpawnOverworldTorch(_entrancePos + new Vector3(-2f, 0, 0));
@@ -216,33 +210,53 @@ namespace FantasyGame.Dungeon
         }
 
         // ===================================================================
-        //  ENTER / EXIT
+        //  POSITION-BASED ENTER / EXIT DETECTION
         // ===================================================================
 
-        public void EnterDungeon()
+        private void Update()
         {
-            if (IsInDungeon) return;
+            if (_player == null) return;
 
-            Debug.Log("[DungeonManager] Entering dungeon...");
+            // Check if player is inside the dungeon trench area
+            bool inTrench = IsPlayerInTrench();
 
-            _savedPlayerPos = _player.position;
-            _savedPlayerRot = _player.rotation;
-            SaveLighting();
-
-            ToggleOverworld(false);
-            GenerateDungeon();
-            ApplyDungeonLighting();
-
-            IsInDungeon = true;
-            Debug.Log("[DungeonManager] Dungeon generated and active.");
+            if (inTrench && !IsInDungeon)
+            {
+                // Player walked into the trench
+                SaveLighting();
+                ApplyDungeonLighting();
+                ToggleOverworld(false);
+                IsInDungeon = true;
+                Debug.Log("[DungeonManager] Player entered dungeon trench.");
+            }
+            else if (!inTrench && IsInDungeon)
+            {
+                // Player walked back out
+                ToggleOverworld(true);
+                RestoreLighting();
+                IsInDungeon = false;
+                Debug.Log("[DungeonManager] Player left dungeon trench.");
+            }
         }
+
+        private bool IsPlayerInTrench()
+        {
+            // Player is "in dungeon" when inside the hole zone and below entrance level
+            float dx = Mathf.Abs(_player.position.x - ENTRANCE_X);
+            float dz = _player.position.z - ENTRANCE_Z; // negative when inside dungeon
+            float playerY = _player.position.y;
+
+            return dx < 10f && dz < -1f && dz > -95f && playerY < _entranceTerrainY - 0.5f;
+        }
+
+        // Legacy methods kept for DungeonExit interactable
+        public void EnterDungeon() { }
 
         public void ExitDungeon()
         {
             if (!IsInDungeon) return;
 
-            Debug.Log("[DungeonManager] Exiting dungeon...");
-
+            // Teleport player back to entrance surface
             var cc = _player.GetComponent<CharacterController>();
             if (cc != null) cc.enabled = false;
             _player.position = _entrancePos + Vector3.up * 0.5f + Vector3.forward * 2f;
@@ -251,18 +265,7 @@ namespace FantasyGame.Dungeon
             var tpc = _player.GetComponent<Player.ThirdPersonController>();
             if (tpc != null) tpc.ResetAfterRespawn();
 
-            if (_dungeonRoot != null)
-            {
-                Destroy(_dungeonRoot);
-                _dungeonRoot = null;
-            }
-            _dungeonEnemies.Clear();
-
-            ToggleOverworld(true);
-            RestoreLighting();
-
-            IsInDungeon = false;
-            Debug.Log("[DungeonManager] Returned to overworld.");
+            // Update() will detect we left the trench and restore lighting
         }
 
         // ===================================================================
