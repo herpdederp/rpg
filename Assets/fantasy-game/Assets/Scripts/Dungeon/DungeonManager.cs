@@ -203,45 +203,52 @@ namespace FantasyGame.Dungeon
         }
 
         // ===================================================================
-        //  POSITION-BASED ENTER / EXIT DETECTION
+        //  PROXIMITY-BASED ENTER / EXIT DETECTION
         // ===================================================================
 
         private void Update()
         {
             if (_player == null) return;
 
-            // Check if player is inside the dungeon trench area
-            bool inTrench = IsPlayerInTrench();
-
-            if (inTrench && !IsInDungeon)
+            if (!IsInDungeon)
             {
-                // Player walked into the trench
-                SaveLighting();
-                ApplyDungeonLighting();
-                ToggleOverworld(false);
-                IsInDungeon = true;
-                Debug.Log("[DungeonManager] Player entered dungeon trench.");
-            }
-            else if (!inTrench && IsInDungeon)
-            {
-                // Player walked back out
-                ToggleOverworld(true);
-                RestoreLighting();
-                IsInDungeon = false;
-                Debug.Log("[DungeonManager] Player left dungeon trench.");
+                // Check if player walked into the entrance arch
+                float dx = Mathf.Abs(_player.position.x - ENTRANCE_X);
+                float dz = Mathf.Abs(_player.position.z - ENTRANCE_Z);
+                if (dx < 2f && dz < 2f)
+                {
+                    TeleportIntoDungeon();
+                }
             }
         }
 
-        private bool IsPlayerInTrench()
+        private void TeleportIntoDungeon()
         {
-            // Player is "in dungeon" when below entrance terrain level
-            // (they've descended the ramp into the underground rooms)
-            float playerY = _player.position.y;
-            return playerY < _entranceTerrainY - 1.5f;
+            // Save position for exit
+            _savedPlayerPos = _player.position;
+            _savedPlayerRot = _player.rotation;
+
+            // Teleport player to center of entry room
+            Vector3 entryRoomCenter = _entrancePos + new Vector3(0, -3f + 0.5f, -11.5f);
+            var cc = _player.GetComponent<CharacterController>();
+            if (cc != null) cc.enabled = false;
+            _player.position = entryRoomCenter;
+            _player.rotation = Quaternion.Euler(0, 180, 0); // face south (into dungeon)
+            if (cc != null) cc.enabled = true;
+
+            SaveLighting();
+            ApplyDungeonLighting();
+            ToggleOverworld(false);
+            _dungeonRoot.SetActive(true);
+            IsInDungeon = true;
+
+            var tpc = _player.GetComponent<Player.ThirdPersonController>();
+            if (tpc != null) tpc.ResetAfterRespawn();
+
+            Debug.Log("[DungeonManager] Teleported player into dungeon.");
         }
 
-        // Legacy methods kept for DungeonExit interactable
-        public void EnterDungeon() { }
+        public void EnterDungeon() { TeleportIntoDungeon(); }
 
         public void ExitDungeon()
         {
@@ -250,13 +257,18 @@ namespace FantasyGame.Dungeon
             // Teleport player back to entrance surface
             var cc = _player.GetComponent<CharacterController>();
             if (cc != null) cc.enabled = false;
-            _player.position = _entrancePos + Vector3.up * 0.5f + Vector3.forward * 2f;
-            _player.rotation = Quaternion.Euler(0, 180, 0);
+            _player.position = _entrancePos + Vector3.up * 0.5f + Vector3.forward * 3f;
+            _player.rotation = Quaternion.Euler(0, 0, 0);
             if (cc != null) cc.enabled = true;
+
+            ToggleOverworld(true);
+            RestoreLighting();
+            IsInDungeon = false;
+
             var tpc = _player.GetComponent<Player.ThirdPersonController>();
             if (tpc != null) tpc.ResetAfterRespawn();
 
-            // Update() will detect we left the trench and restore lighting
+            Debug.Log("[DungeonManager] Teleported player out of dungeon.");
         }
 
         // ===================================================================
@@ -293,10 +305,8 @@ namespace FantasyGame.Dungeon
                     room.DoorNorth, room.DoorSouth, room.OpenNorth, room.NoCeiling);
             }
 
-            // Entrance ramp: the terrain itself slopes down via the registered RampZone
-            // (from Z=130 at surface level to Z=123.5 at entry room floor).
-            // We just need guide walls along the ramp sides so the player stays on path.
-            BuildEntranceGuideWalls();
+            // Hide dungeon rooms until player enters (teleport-based)
+            _dungeonRoot.SetActive(false);
 
             // Transition ramps between adjacent rooms (connect south wall of room[i] to north wall of room[i+1])
             for (int i = 0; i < rooms.Length - 1; i++)
@@ -420,55 +430,6 @@ namespace FantasyGame.Dungeon
             wall.GetComponent<Renderer>().material = mat;
             wall.isStatic = true;
             return wall;
-        }
-
-        /// <summary>
-        /// Builds the entrance ramp — a physical angled surface from north of the
-        /// entrance arch down to the entry room floor. The terrain is also depressed
-        /// via RampZone but this ramp sits above it as the definitive walking surface.
-        /// Guide walls on both sides keep the player on the path.
-        /// </summary>
-        private void BuildEntranceGuideWalls()
-        {
-            // Ramp starts north of the arch (Z=134) so the player is already
-            // walking downhill before they reach the arch at Z=130.
-            // Ends at the entry room floor at Z=123.5
-            float rampTopZ = ENTRANCE_Z + 4f;     // Z=134
-            float rampBottomZ = ENTRANCE_Z - 6.5f; // Z=123.5 (entry room north edge)
-            float rampTopY = _entranceTerrainY + 0.15f; // just above terrain
-            float rampBottomY = _entranceTerrainY - 3f;  // entry room floor
-
-            Vector3 topPos = new Vector3(ENTRANCE_X, rampTopY, rampTopZ);
-            Vector3 bottomPos = new Vector3(ENTRANCE_X, rampBottomY, rampBottomZ);
-            Vector3 mid = (topPos + bottomPos) * 0.5f;
-            Vector3 dir = bottomPos - topPos;
-            float slopeLength = dir.magnitude;
-            float angle = Mathf.Atan2(-dir.y, Mathf.Abs(dir.z)) * Mathf.Rad2Deg;
-
-            // Physical ramp surface — angled cube the player walks on
-            var ramp = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            ramp.transform.SetParent(_dungeonRoot.transform);
-            ramp.transform.position = mid;
-            ramp.transform.localScale = new Vector3(CORRIDOR_WIDTH + 1f, 0.3f, slopeLength + 1f);
-            ramp.transform.rotation = Quaternion.Euler(angle, 0, 0);
-            ramp.GetComponent<Renderer>().material = _floorMat;
-            ramp.name = "EntranceRamp";
-
-            // Guide walls on both sides — tall, extending full ramp length
-            float wallMidZ = (rampTopZ + rampBottomZ) * 0.5f;
-            float wallLength = (rampTopZ - rampBottomZ) + 2f;
-            float wallMidY = (rampTopY + rampBottomY) * 0.5f;
-
-            for (int side = -1; side <= 1; side += 2)
-            {
-                var sideWall = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                sideWall.transform.SetParent(_dungeonRoot.transform);
-                float wallX = ENTRANCE_X + side * (CORRIDOR_WIDTH * 0.5f + WALL_THICKNESS * 0.5f);
-                sideWall.transform.position = new Vector3(wallX, wallMidY, wallMidZ);
-                sideWall.transform.localScale = new Vector3(WALL_THICKNESS, 8f, wallLength);
-                sideWall.GetComponent<Renderer>().material = _wallMat;
-                sideWall.name = "RampGuideWall";
-            }
         }
 
         /// <summary>
