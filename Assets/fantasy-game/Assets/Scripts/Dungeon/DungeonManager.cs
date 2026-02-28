@@ -227,7 +227,7 @@ namespace FantasyGame.Dungeon
                 float dungeonFloorY = _entranceTerrainY - 20f; // rooms are at Y offset -20
                 if (_player.position.y < dungeonFloorY - 5f)
                 {
-                    Vector3 entryRoomCenter = _entrancePos + new Vector3(0, -20f + 0.5f, -10f);
+                    Vector3 entryRoomCenter = _entrancePos + new Vector3(0, -20f + 0.5f, -5f);
                     var cc = _player.GetComponent<CharacterController>();
                     if (cc != null) cc.enabled = false;
                     _player.position = entryRoomCenter;
@@ -245,8 +245,8 @@ namespace FantasyGame.Dungeon
             _savedPlayerPos = _player.position;
             _savedPlayerRot = _player.rotation;
 
-            // Teleport player to center of entry room
-            Vector3 entryRoomCenter = _entrancePos + new Vector3(0, -20f + 0.5f, -10f);
+            // Teleport player to center of entry room (ZOffset = -5)
+            Vector3 entryRoomCenter = _entrancePos + new Vector3(0, -20f + 0.5f, -5f);
             var cc = _player.GetComponent<CharacterController>();
             if (cc != null) cc.enabled = false;
             _player.position = entryRoomCenter;
@@ -296,23 +296,52 @@ namespace FantasyGame.Dungeon
         {
             _dungeonRoot = new GameObject("DungeonInterior");
 
-            // Room definitions — underground, gentle descent from entrance
-            // Y offsets are relative to entrance terrain height
-            var rooms = new RoomDef[]
-            {
-                // All rooms at the same Y level (-20) — deep underground, flat floor throughout.
-                // No height differences = no falling between rooms.
-                new RoomDef { Name = "Entry",     ZOffset = -10f,   YOffset = -20f,  Width = 10, Depth = 10, DoorNorth = false, DoorSouth = true },
-                new RoomDef { Name = "Corr1",     ZOffset = -18f,   YOffset = -20f,  Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Combat1",   ZOffset = -27f,   YOffset = -20f,  Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Corr2",     ZOffset = -37f,   YOffset = -20f,  Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Combat2",   ZOffset = -46f,   YOffset = -20f,  Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Corr3",     ZOffset = -55f,   YOffset = -20f,  Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Treasure",  ZOffset = -63f,   YOffset = -20f,  Width = 10, Depth = 10, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Corr4",     ZOffset = -71f,   YOffset = -20f,  Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Boss",      ZOffset = -80f,   YOffset = -20f,  Width = 16, Depth = 16, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Exit",      ZOffset = -93f,   YOffset = -20f,  Width = 6,  Depth = 6,  DoorNorth = true, DoorSouth = false },
-            };
+            // Room definitions — all at Y=-20, computed Z offsets so rooms are perfectly flush.
+            // Each room's north wall touches the previous room's south wall exactly.
+            float Y = -20f;
+            float z = 0f; // running Z cursor (relative to entrance)
+
+            // Entry: starts at z=0, depth 10 → center at z=-5, south wall at z=-10
+            z -= 5f; // center
+            var entry = new RoomDef { Name = "Entry", ZOffset = z, YOffset = Y, Width = 10, Depth = 10, DoorNorth = false, DoorSouth = true };
+            z -= 5f; // past south wall
+
+            z -= 3f; // corridor half-depth
+            var corr1 = new RoomDef { Name = "Corr1", ZOffset = z, YOffset = Y, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true };
+            z -= 3f;
+
+            z -= 6f;
+            var combat1 = new RoomDef { Name = "Combat1", ZOffset = z, YOffset = Y, Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true };
+            z -= 6f;
+
+            z -= 3f;
+            var corr2 = new RoomDef { Name = "Corr2", ZOffset = z, YOffset = Y, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true };
+            z -= 3f;
+
+            z -= 6f;
+            var combat2 = new RoomDef { Name = "Combat2", ZOffset = z, YOffset = Y, Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true };
+            z -= 6f;
+
+            z -= 3f;
+            var corr3 = new RoomDef { Name = "Corr3", ZOffset = z, YOffset = Y, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true };
+            z -= 3f;
+
+            z -= 5f;
+            var treasure = new RoomDef { Name = "Treasure", ZOffset = z, YOffset = Y, Width = 10, Depth = 10, DoorNorth = true, DoorSouth = true };
+            z -= 5f;
+
+            z -= 3f;
+            var corr4 = new RoomDef { Name = "Corr4", ZOffset = z, YOffset = Y, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true };
+            z -= 3f;
+
+            z -= 8f;
+            var boss = new RoomDef { Name = "Boss", ZOffset = z, YOffset = Y, Width = 16, Depth = 16, DoorNorth = true, DoorSouth = true };
+            z -= 8f;
+
+            z -= 3f;
+            var exit = new RoomDef { Name = "Exit", ZOffset = z, YOffset = Y, Width = 6, Depth = 6, DoorNorth = true, DoorSouth = false };
+
+            var rooms = new RoomDef[] { entry, corr1, combat1, corr2, combat2, corr3, treasure, corr4, boss, exit };
 
             // Build each room
             foreach (var room in rooms)
@@ -320,6 +349,35 @@ namespace FantasyGame.Dungeon
                 Vector3 center = _entrancePos + new Vector3(0, room.YOffset, room.ZOffset);
                 BuildRoom(center, room.Width, room.Depth, ROOM_HEIGHT,
                     room.DoorNorth, room.DoorSouth, room.OpenNorth, room.NoCeiling);
+            }
+
+            // Build corridor connectors between each pair of adjacent rooms
+            // (floor, walls, ceiling bridging any gap at the doorway boundary)
+            for (int i = 0; i < rooms.Length - 1; i++)
+            {
+                float southZ = rooms[i].ZOffset - rooms[i].Depth * 0.5f;
+                float northZ = rooms[i + 1].ZOffset + rooms[i + 1].Depth * 0.5f;
+                float gapSize = Mathf.Abs(southZ - northZ);
+
+                // Even if gap is 0, add a connector floor slab to ensure no seam
+                float connZ = (southZ + northZ) * 0.5f;
+                float connDepth = Mathf.Max(gapSize, 1f); // at least 1m connector
+                Vector3 connCenter = _entrancePos + new Vector3(0, Y, connZ);
+
+                // Floor
+                CreateWall(connCenter + new Vector3(0, -WALL_THICKNESS * 0.5f, 0),
+                    new Vector3(CORRIDOR_WIDTH + 0.5f, WALL_THICKNESS, connDepth + 0.5f), _floorMat);
+
+                // Ceiling
+                CreateWall(connCenter + new Vector3(0, ROOM_HEIGHT + WALL_THICKNESS * 0.5f, 0),
+                    new Vector3(CORRIDOR_WIDTH + 0.5f, WALL_THICKNESS, connDepth + 0.5f), _ceilingMat);
+
+                // Side walls
+                for (int side = -1; side <= 1; side += 2)
+                {
+                    CreateWall(connCenter + new Vector3(side * (CORRIDOR_WIDTH * 0.5f + WALL_THICKNESS * 0.5f), ROOM_HEIGHT * 0.5f, 0),
+                        new Vector3(WALL_THICKNESS, ROOM_HEIGHT, connDepth + 0.5f), _wallMat);
+                }
             }
 
             // Spawn content in rooms
@@ -335,7 +393,6 @@ namespace FantasyGame.Dungeon
             {
                 Vector3 center = _entrancePos + new Vector3(0, room.YOffset, room.ZOffset);
                 float hw = room.Width * 0.4f;
-                float hd = room.Depth * 0.4f;
 
                 // Two torches on opposite walls for every room
                 SpawnDungeonTorch(center + new Vector3(hw, 2f, 0));
@@ -344,6 +401,7 @@ namespace FantasyGame.Dungeon
                 // Extra torches in larger rooms
                 if (room.Width > 8f)
                 {
+                    float hd = room.Depth * 0.4f;
                     SpawnDungeonTorch(center + new Vector3(0, 2f, hd));
                     SpawnDungeonTorch(center + new Vector3(0, 2f, -hd));
                 }
