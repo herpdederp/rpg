@@ -102,17 +102,8 @@ namespace FantasyGame.Dungeon
             }
 
             // Get terrain height at entrance
+            // Note: flat zone + hole are registered in GltfBootstrap before terrain generation
             _entranceTerrainY = NoiseUtils.SampleHeight(ENTRANCE_X, ENTRANCE_Z, seed);
-
-            // Register flat zone at entrance so the arch sits level
-            NoiseUtils.RegisterFlatZone(ENTRANCE_X, ENTRANCE_Z, 6f, 4f, _entranceTerrainY);
-
-            // Carve a terrain hole for the entire dungeon length
-            // The dungeon extends ~90m in -Z from the entrance
-            // HalfWidth = 10 (covers widest room 16m + margin)
-            // HalfDepth = 48 (covers from entrance to Z=-90 exit)
-            // Center at ENTRANCE_Z - 47 to cover from Z=-1 to Z=-93
-            NoiseUtils.RegisterHole(ENTRANCE_X, ENTRANCE_Z - 47f, 10f, 48f);
 
             _entrancePos = new Vector3(ENTRANCE_X, _entranceTerrainY, ENTRANCE_Z);
 

@@ -112,8 +112,13 @@ namespace FantasyGame.Loading
             _dungeonMeshes = await LoadMeshesFromGlb(DUNGEON_FILENAME);
             Debug.Log($"[GltfBootstrap] World meshes: npcs={_npcMeshes.Length}, props={_propMeshes.Length}, items={_itemMeshes.Length}, buildings={_buildingMeshes.Length}, dungeon={_dungeonMeshes.Length}");
 
-            // --- Register flat zones (must happen before any terrain generation) ---
+            // --- Register flat zones and holes (must happen before any terrain generation) ---
             NoiseUtils.RegisterFlatZone(80f, 80f, 16f, 12f, 12f); // Village plateau
+
+            // Dungeon: flat zone at entrance + hole for the entire trench
+            float dungeonEntranceY = NoiseUtils.SampleHeight(140f, 130f, WORLD_SEED);
+            NoiseUtils.RegisterFlatZone(140f, 130f, 6f, 4f, dungeonEntranceY);
+            NoiseUtils.RegisterHole(140f, 130f - 47f, 10f, 48f);
 
             // --- Initialize world ---
             var worldGo = new GameObject("WorldManager");
