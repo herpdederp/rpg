@@ -220,6 +220,23 @@ namespace FantasyGame.Dungeon
                     TeleportIntoDungeon();
                 }
             }
+            else
+            {
+                // Fall protection — if player somehow falls below the dungeon floor,
+                // teleport them back to the entry room
+                float dungeonFloorY = _entranceTerrainY - 20f; // rooms are at Y offset -20
+                if (_player.position.y < dungeonFloorY - 5f)
+                {
+                    Vector3 entryRoomCenter = _entrancePos + new Vector3(0, -20f + 0.5f, -10f);
+                    var cc = _player.GetComponent<CharacterController>();
+                    if (cc != null) cc.enabled = false;
+                    _player.position = entryRoomCenter;
+                    if (cc != null) cc.enabled = true;
+                    var tpc = _player.GetComponent<Player.ThirdPersonController>();
+                    if (tpc != null) tpc.ResetAfterRespawn();
+                    Debug.Log("[DungeonManager] Fall protection — teleported player back to entry room.");
+                }
+            }
         }
 
         private void TeleportIntoDungeon()
@@ -229,7 +246,7 @@ namespace FantasyGame.Dungeon
             _savedPlayerRot = _player.rotation;
 
             // Teleport player to center of entry room
-            Vector3 entryRoomCenter = _entrancePos + new Vector3(0, -3f + 0.5f, -11.5f);
+            Vector3 entryRoomCenter = _entrancePos + new Vector3(0, -20f + 0.5f, -10f);
             var cc = _player.GetComponent<CharacterController>();
             if (cc != null) cc.enabled = false;
             _player.position = entryRoomCenter;
@@ -283,18 +300,18 @@ namespace FantasyGame.Dungeon
             // Y offsets are relative to entrance terrain height
             var rooms = new RoomDef[]
             {
-                // Entry room: north edge at ZOffset + Depth/2 = -11.5 + 5 = -6.5 (meets ramp bottom)
-                // OpenNorth = true: no north wall. NoCeiling = true: no ceiling blocking ramp.
-                new RoomDef { Name = "Entry",     ZOffset = -11.5f, YOffset = -3f,   Width = 10, Depth = 10, DoorNorth = true, DoorSouth = true, OpenNorth = true, NoCeiling = true },
-                new RoomDef { Name = "Corr1",     ZOffset = -20f,   YOffset = -3.5f, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Combat1",   ZOffset = -29f,   YOffset = -4f,   Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Corr2",     ZOffset = -39f,   YOffset = -4.5f, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Combat2",   ZOffset = -48f,   YOffset = -5f,   Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Corr3",     ZOffset = -57f,   YOffset = -5.5f, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Treasure",  ZOffset = -65f,   YOffset = -6f,   Width = 10, Depth = 10, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Corr4",     ZOffset = -73f,   YOffset = -6.5f, Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Boss",      ZOffset = -83f,   YOffset = -7f,   Width = 16, Depth = 16, DoorNorth = true, DoorSouth = true },
-                new RoomDef { Name = "Exit",      ZOffset = -96f,   YOffset = -7f,   Width = 6,  Depth = 6,  DoorNorth = true, DoorSouth = false },
+                // All rooms at the same Y level (-20) — deep underground, flat floor throughout.
+                // No height differences = no falling between rooms.
+                new RoomDef { Name = "Entry",     ZOffset = -10f,   YOffset = -20f,  Width = 10, Depth = 10, DoorNorth = false, DoorSouth = true },
+                new RoomDef { Name = "Corr1",     ZOffset = -18f,   YOffset = -20f,  Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Combat1",   ZOffset = -27f,   YOffset = -20f,  Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Corr2",     ZOffset = -37f,   YOffset = -20f,  Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Combat2",   ZOffset = -46f,   YOffset = -20f,  Width = 14, Depth = 12, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Corr3",     ZOffset = -55f,   YOffset = -20f,  Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Treasure",  ZOffset = -63f,   YOffset = -20f,  Width = 10, Depth = 10, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Corr4",     ZOffset = -71f,   YOffset = -20f,  Width = CORRIDOR_WIDTH, Depth = 6, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Boss",      ZOffset = -80f,   YOffset = -20f,  Width = 16, Depth = 16, DoorNorth = true, DoorSouth = true },
+                new RoomDef { Name = "Exit",      ZOffset = -93f,   YOffset = -20f,  Width = 6,  Depth = 6,  DoorNorth = true, DoorSouth = false },
             };
 
             // Build each room
@@ -305,26 +322,7 @@ namespace FantasyGame.Dungeon
                     room.DoorNorth, room.DoorSouth, room.OpenNorth, room.NoCeiling);
             }
 
-            // Hide dungeon rooms until player enters (teleport-based)
-            _dungeonRoot.SetActive(false);
-
-            // Transition ramps between adjacent rooms (connect south wall of room[i] to north wall of room[i+1])
-            for (int i = 0; i < rooms.Length - 1; i++)
-            {
-                float southZ_i = rooms[i].ZOffset - rooms[i].Depth * 0.5f;   // south wall Z of room i
-                float northZ_next = rooms[i + 1].ZOffset + rooms[i + 1].Depth * 0.5f; // north wall Z of room i+1
-                float yDiff = rooms[i + 1].YOffset - rooms[i].YOffset;
-
-                if (Mathf.Abs(yDiff) > 0.01f || Mathf.Abs(southZ_i - northZ_next) > 0.1f)
-                {
-                    // Build a short connecting ramp between rooms
-                    Vector3 top = _entrancePos + new Vector3(0, rooms[i].YOffset, southZ_i);
-                    Vector3 bottom = _entrancePos + new Vector3(0, rooms[i + 1].YOffset, northZ_next);
-                    BuildRamp(top, bottom);
-                }
-            }
-
-            // Spawn content
+            // Spawn content in rooms
             SpawnEntryRoomContent(rooms[0]);
             SpawnCombatRoom1Content(rooms[2]);
             SpawnCombatRoom2Content(rooms[4]);
@@ -332,17 +330,30 @@ namespace FantasyGame.Dungeon
             SpawnBossRoomContent(rooms[8]);
             SpawnExitRoomContent(rooms[9]);
 
-            // Torches in corridors
+            // Torches in ALL rooms — brighter dungeon
             foreach (var room in rooms)
             {
-                if (room.Name.StartsWith("Corr"))
+                Vector3 center = _entrancePos + new Vector3(0, room.YOffset, room.ZOffset);
+                float hw = room.Width * 0.4f;
+                float hd = room.Depth * 0.4f;
+
+                // Two torches on opposite walls for every room
+                SpawnDungeonTorch(center + new Vector3(hw, 2f, 0));
+                SpawnDungeonTorch(center + new Vector3(-hw, 2f, 0));
+
+                // Extra torches in larger rooms
+                if (room.Width > 8f)
                 {
-                    Vector3 center = _entrancePos + new Vector3(0, room.YOffset, room.ZOffset);
-                    SpawnDungeonTorch(center + new Vector3(room.Width * 0.4f, 2f, 0));
+                    SpawnDungeonTorch(center + new Vector3(0, 2f, hd));
+                    SpawnDungeonTorch(center + new Vector3(0, 2f, -hd));
                 }
             }
 
             Physics.SyncTransforms();
+
+            // Hide dungeon until player enters (teleport-based)
+            _dungeonRoot.SetActive(false);
+
             Debug.Log($"[DungeonManager] Generated {rooms.Length} underground rooms.");
         }
 
@@ -690,9 +701,9 @@ namespace FantasyGame.Dungeon
 
             var light = torchGo.AddComponent<Light>();
             light.type = LightType.Point;
-            light.color = new Color(1f, 0.65f, 0.3f);
-            light.intensity = 2.5f;
-            light.range = 10f;
+            light.color = new Color(1f, 0.7f, 0.35f);
+            light.intensity = 5f;
+            light.range = 18f;
             light.shadows = LightShadows.None;
         }
 
@@ -752,12 +763,12 @@ namespace FantasyGame.Dungeon
         {
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Linear;
-            RenderSettings.fogStartDistance = 5f;
-            RenderSettings.fogEndDistance = 25f;
-            RenderSettings.fogColor = new Color(0.03f, 0.02f, 0.04f);
-            RenderSettings.ambientLight = new Color(0.05f, 0.04f, 0.06f);
+            RenderSettings.fogStartDistance = 15f;
+            RenderSettings.fogEndDistance = 50f;
+            RenderSettings.fogColor = new Color(0.06f, 0.04f, 0.08f);
+            RenderSettings.ambientLight = new Color(0.15f, 0.12f, 0.18f);
             if (_sunLight != null)
-                _sunLight.intensity = 0.05f;
+                _sunLight.intensity = 0.15f;
         }
 
         private void RestoreLighting()
